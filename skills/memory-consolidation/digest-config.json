@@ -1,0 +1,6 @@
+{
+  "shown_categories": ["user", "project", "task", "system", "config", "model", "telegram", "agent"],
+  "pinned_keys": ["user.name", "user.language"],
+  "min_count_for_l0": 5,
+  "max_categories_in_l0": 15
+}
