@@ -148,8 +148,7 @@ echo "   Group: $TELEGRAM_GROUP"
 # Create a temporary working directory
 TEMP_WORKDIR=$(mktemp -d)
 echo "Created temporary workdir: $TEMP_WORKDIR"
-cd "$TEMP_WORKDIR" && git init >/dev/null
-cd - >/dev/null
+# Note: Skipping git init to avoid sandbox restrictions
 
 # Write task-meta.json for hooks
 TASK_META="${RESULTS_DIR}/task-meta.json"
