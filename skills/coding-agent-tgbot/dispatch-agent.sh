@@ -204,8 +204,8 @@ case "$AGENT" in
         AGENT_EXIT_CODE=$?
         ;;
     gemini)
-        # Gemini CLI uses different flags - adjust as needed
-        AGENT_FULL_OUTPUT=$("${AGENT_BIN}" -p - --sandbox < "$PROMPT_FILE" 2>&1)
+        # Gemini CLI - use -y for auto-accept, no sandbox to allow file/shell tools
+        AGENT_FULL_OUTPUT=$("${AGENT_BIN}" -p - -y < "$PROMPT_FILE" 2>&1)
         AGENT_EXIT_CODE=$?
         ;;
     *)
