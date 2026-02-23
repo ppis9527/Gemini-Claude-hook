@@ -196,24 +196,50 @@ unset GEMINI_CLI
 
 cd "${TEMP_WORKDIR}"
 
-# Agent-specific execution
+# Cleanup function for graceful termination
+cleanup() {
+    local exit_code=$?
+    echo "[dispatch] Received signal, cleaning up..."
+
+    # Kill agent if still running
+    if [ -n "${AGENT_PID:-}" ] && kill -0 "$AGENT_PID" 2>/dev/null; then
+        kill "$AGENT_PID" 2>/dev/null || true
+        wait "$AGENT_PID" 2>/dev/null || true
+    fi
+
+    # Update status to interrupted
+    sed -i 's/"status": "running"/"status": "interrupted"/' "$TASK_META" 2>/dev/null || true
+
+    # Send TG notification about interruption
+    send_telegram "⚠️ *${AGENT_NAME} 任務中斷*
+
+📋 任務: \`${TASK_NAME}\`
+📝 原因: 進程被終止"
+
+    rm -f "$PROMPT_FILE"
+    exit $exit_code
+}
+
+trap cleanup SIGTERM SIGINT SIGHUP
+
+# Agent-specific execution - output directly to file (survives parent termination)
 case "$AGENT" in
     claude)
-        AGENT_FULL_OUTPUT=$("${AGENT_BIN}" -p - --permission-mode bypassPermissions < "$PROMPT_FILE" 2>&1)
-        AGENT_EXIT_CODE=$?
+        "${AGENT_BIN}" -p - --permission-mode bypassPermissions < "$PROMPT_FILE" > "$TASK_OUTPUT" 2>&1 &
+        AGENT_PID=$!
         ;;
     gemini)
         # Gemini CLI - use -y for auto-accept, no sandbox to allow file/shell tools
         # Set GOG_KEYRING_PASSWORD for gog CLI access
         export GOG_KEYRING_PASSWORD=$(gcloud secrets versions access latest --secret=GOG_KEYRING_PASSWORD 2>/dev/null || echo "")
         # Include common directories for file access
-        AGENT_FULL_OUTPUT=$("${AGENT_BIN}" -p - -y \
+        "${AGENT_BIN}" -p - -y \
             --include-directories "$HOME/.openclaw" \
             --include-directories "$HOME/.gemini" \
             --include-directories "$HOME/Telegram-Gemini-Bot" \
             --include-directories "/tmp" \
-            < "$PROMPT_FILE" 2>&1)
-        AGENT_EXIT_CODE=$?
+            < "$PROMPT_FILE" > "$TASK_OUTPUT" 2>&1 &
+        AGENT_PID=$!
         ;;
     *)
         echo "Error: No execution handler for agent '$AGENT'" >&2
@@ -221,13 +247,22 @@ case "$AGENT" in
         ;;
 esac
 
+echo "[dispatch] Agent PID: $AGENT_PID, output: $TASK_OUTPUT"
+
+# Wait for agent to complete
+wait "$AGENT_PID"
+AGENT_EXIT_CODE=$?
+
+# Clear trap after successful completion
+trap - SIGTERM SIGINT SIGHUP
+
 cd - >/dev/null
 
-# Cleanup
+# Cleanup prompt file
 rm -f "$PROMPT_FILE"
 
-# Write the captured output to TASK_OUTPUT
-echo "$AGENT_FULL_OUTPUT" > "$TASK_OUTPUT"
+# Read output from file for processing
+AGENT_FULL_OUTPUT=$(cat "$TASK_OUTPUT" 2>/dev/null || echo "")
 
 # ============== 6. Extract Summary from Output ==============
 # Look for "## 摘要" section
