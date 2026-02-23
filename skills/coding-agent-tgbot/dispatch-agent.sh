@@ -318,8 +318,10 @@ echo "[dispatch] Decision report saved: $REPORT_FILE"
 
 # Upload to Google Drive (Obsidian sync)
 GDRIVE_FOLDER_ID="1kGbGb-OX_7Spms6dbRoSfYxL5AdImahK"
+GOG_ACCOUNT="jerryyrliu@gmail.com"
 if command -v gog &>/dev/null; then
-    gog drive upload "$REPORT_FILE" --parent "$GDRIVE_FOLDER_ID" 2>/dev/null && \
+    export GOG_KEYRING_PASSWORD=${GOG_KEYRING_PASSWORD:-$(gcloud secrets versions access latest --secret=GOG_KEYRING_PASSWORD 2>/dev/null || echo "")}
+    gog drive upload "$REPORT_FILE" --parent "$GDRIVE_FOLDER_ID" --account "$GOG_ACCOUNT" 2>/dev/null && \
         echo "[dispatch] Uploaded to Google Drive: ${TASK_NAME}.md" || \
         echo "[dispatch] Google Drive upload failed (non-critical)"
 fi
