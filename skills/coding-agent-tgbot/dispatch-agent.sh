@@ -206,7 +206,13 @@ case "$AGENT" in
         # Gemini CLI - use -y for auto-accept, no sandbox to allow file/shell tools
         # Set GOG_KEYRING_PASSWORD for gog CLI access
         export GOG_KEYRING_PASSWORD=$(gcloud secrets versions access latest --secret=GOG_KEYRING_PASSWORD 2>/dev/null || echo "")
-        AGENT_FULL_OUTPUT=$("${AGENT_BIN}" -p - -y < "$PROMPT_FILE" 2>&1)
+        # Include common directories for file access
+        AGENT_FULL_OUTPUT=$("${AGENT_BIN}" -p - -y \
+            --include-directories "$HOME/.openclaw" \
+            --include-directories "$HOME/.gemini" \
+            --include-directories "$HOME/Telegram-Gemini-Bot" \
+            --include-directories "/tmp" \
+            < "$PROMPT_FILE" 2>&1)
         AGENT_EXIT_CODE=$?
         ;;
     *)
