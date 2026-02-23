@@ -264,22 +264,68 @@ rm -f "$PROMPT_FILE"
 # Read output from file for processing
 AGENT_FULL_OUTPUT=$(cat "$TASK_OUTPUT" 2>/dev/null || echo "")
 
-# ============== 6. Extract Summary from Output ==============
+# ============== 6. Extract Summary and Decision Report ==============
 # Look for "## 摘要" section
 SUMMARY=$(echo "$AGENT_FULL_OUTPUT" | sed -n '/^## 摘要/,/^##/p' | sed '1d;/^##/d' | head -c 100 | tr '\n' ' ')
 if [ -z "$SUMMARY" ]; then
     SUMMARY="任務已完成（無摘要）"
 fi
 
-# ============== 7. Store Completion in Memory ==============
+# Extract decision report (between "## 決策報告" and "## 摘要")
+DECISION_REPORT=$(echo "$AGENT_FULL_OUTPUT" | sed -n '/^## 決策報告/,/^## 摘要/p' | sed '1d;/^## 摘要/d')
+if [ -z "$DECISION_REPORT" ]; then
+    DECISION_REPORT="（無決策報告）"
+fi
+
+# ============== 7. Save Decision Report as Markdown ==============
+REPORTS_DIR="/home/jerryyrliu/.openclaw/workspace/reports/decisions"
+mkdir -p "$REPORTS_DIR"
+
+REPORT_DATE=$(date +%Y-%m-%d)
+REPORT_TIME=$(date +%H:%M:%S)
+REPORT_FILE="${REPORTS_DIR}/${TASK_NAME}.md"
+
+cat > "$REPORT_FILE" <<REPORT_EOF
+---
+task: ${TASK_NAME}
+agent: ${AGENT}
+status: $([ "$AGENT_EXIT_CODE" -eq 0 ] && echo "completed" || echo "failed")
+date: ${REPORT_DATE}
+time: ${REPORT_TIME}
+tags:
+  - decision-report
+  - ${AGENT}
+---
+
+# ${TASK_NAME}
+
+## 任務資訊
+- **Agent**: ${AGENT_NAME}
+- **日期**: ${REPORT_DATE} ${REPORT_TIME}
+- **狀態**: $([ "$AGENT_EXIT_CODE" -eq 0 ] && echo "✅ 完成" || echo "❌ 失敗")
+
+## 任務描述
+${PROMPT:0:1000}
+
+## 決策報告
+${DECISION_REPORT}
+
+## 摘要
+${SUMMARY}
+REPORT_EOF
+
+echo "[dispatch] Decision report saved: $REPORT_FILE"
+
+# ============== 8. Store Completion in Memory ==============
 if [ "$AGENT_EXIT_CODE" -eq 0 ]; then
     store_memory "task.${TASK_NAME}.status" "completed"
 else
     store_memory "task.${TASK_NAME}.status" "failed"
 fi
 store_memory "task.${TASK_NAME}.summary" "$SUMMARY"
+store_memory "task.${TASK_NAME}.decision_report" "${DECISION_REPORT:0:2000}"
 
-# ============== 8. Notify TG: Task Completed ==============
+# ============== 9. Notify TG: Task Completed ==============
 if [ "$AGENT_EXIT_CODE" -eq 0 ]; then
     STATUS_EMOJI="✅"
     STATUS_TEXT="完成"
