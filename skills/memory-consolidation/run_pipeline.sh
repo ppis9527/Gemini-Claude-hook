@@ -81,7 +81,7 @@ elif [ "${1:-}" = "--backfill-all-openclaw-agents" ]; then
     > "$FACTS_FILE"
     > "$TIMED_FACTS_FILE"
 
-    ALL_AGENT_SESSIONS_DIR="/home/jerryyrliu/.openclaw/agents"
+    ALL_AGENT_SESSIONS_DIR="${OPENCLAW_AGENTS_DIR:-$HOME/.openclaw/agents}"
     FOUND_FILES=()
 
     shopt -s nullglob # Allow glob to expand to nothing if no matches
@@ -138,5 +138,8 @@ node "$SRC_DIR/4-generate-digest.js"
 
 echo "Step 5: Embedding new facts..."
 node "$SRC_DIR/5-embed-facts.js"
+
+echo "Step 6: Generating daily log..."
+node "$SRC_DIR/6-generate-daily-log.js"
 
 echo "--- Finished at $(date) ---"
