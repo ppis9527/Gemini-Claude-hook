@@ -24,10 +24,14 @@ declare -A AGENT_DISPLAY_NAMES=(
     ["gemini"]="Gemini CLI"
 )
 
+declare -A AGENT_RESULTS_DIRS=(
+    ["claude"]="/home/jerryyrliu/claude-code-hooks/data/claude-code-results"
+    ["gemini"]="/home/jerryyrliu/gemini-cli-hooks/data/gemini-cli-results"
+)
+
 # ============== Common Paths ==============
 OPENCLAW_BIN="/home/jerryyrliu/.nvm/versions/node/v24.13.0/bin/openclaw"
 MEMORY_CLI="/home/jerryyrliu/.openclaw/workspace/skills/memory-consolidation/cli/memory-cli.js"
-RESULTS_DIR="/home/jerryyrliu/claude-code-hooks/data/claude-code-results"
 
 # ============== Parse Arguments ==============
 AGENT=""
@@ -79,6 +83,7 @@ fi
 AGENT_BIN="${AGENT_BINS[$AGENT]}"
 TELEGRAM_GROUP="${AGENT_TELEGRAM_GROUPS[$AGENT]}"
 AGENT_NAME="${AGENT_DISPLAY_NAMES[$AGENT]}"
+RESULTS_DIR="${AGENT_RESULTS_DIRS[$AGENT]}"
 
 # Verify agent binary exists
 if [ ! -x "$AGENT_BIN" ]; then
