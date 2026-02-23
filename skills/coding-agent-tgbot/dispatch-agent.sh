@@ -316,6 +316,14 @@ REPORT_EOF
 
 echo "[dispatch] Decision report saved: $REPORT_FILE"
 
+# Upload to Google Drive (Obsidian sync)
+GDRIVE_FOLDER_ID="1kGbGb-OX_7Spms6dbRoSfYxL5AdImahK"
+if command -v gog &>/dev/null; then
+    gog drive upload "$REPORT_FILE" --parent "$GDRIVE_FOLDER_ID" 2>/dev/null && \
+        echo "[dispatch] Uploaded to Google Drive: ${TASK_NAME}.md" || \
+        echo "[dispatch] Google Drive upload failed (non-critical)"
+fi
+
 # ============== 8. Store Completion in Memory ==============
 if [ "$AGENT_EXIT_CODE" -eq 0 ]; then
     store_memory "task.${TASK_NAME}.status" "completed"
