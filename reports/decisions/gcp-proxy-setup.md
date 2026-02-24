@@ -71,4 +71,4 @@ curl -x socks5://34.11.202.94:1080 https://httpbin.org/ip
 在 us-west1-b 創建 e2-micro proxy VM，安裝 microsocks，用於需要美國 IP 的場景。Web3 相關仍用台灣直連。
 
 ---
-#openclaw #infrastructure #proxy #gcp
+#openclaw #2026-02-24 #infrastructure #proxy #gcp

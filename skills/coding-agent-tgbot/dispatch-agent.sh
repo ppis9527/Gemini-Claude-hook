@@ -126,37 +126,65 @@ store_memory() {
 
 # ============== Helper: Generate Hashtags ==============
 generate_hashtags() {
-    local tags="#openclaw #${AGENT}"
+    # Date tag (Taiwan timezone)
+    local date_tag="#$(TZ='Asia/Taipei' date +%Y-%m-%d)"
+    local tags="#openclaw #${AGENT} ${date_tag}"
 
     # Detect skill vs tool based on task name or prompt
     local lower_task=$(echo "$TASK_NAME" | tr '[:upper:]' '[:lower:]')
     local lower_prompt=$(echo "$PROMPT" | tr '[:upper:]' '[:lower:]')
+    local combined="$lower_task $lower_prompt"
 
-    if [[ "$lower_task" == *"skill"* ]] || [[ "$lower_prompt" == *"skill"* ]]; then
+    if [[ "$combined" == *"skill"* ]]; then
         tags="$tags #skill"
-    elif [[ "$lower_task" == *"tool"* ]] || [[ "$lower_prompt" == *"tool"* ]]; then
+    elif [[ "$combined" == *"tool"* ]]; then
         tags="$tags #tool"
     fi
 
-    # Detect specific topics
-    if [[ "$lower_task" == *"notion"* ]] || [[ "$lower_prompt" == *"notion"* ]]; then
-        tags="$tags #notion"
-    fi
-    if [[ "$lower_task" == *"cron"* ]] || [[ "$lower_prompt" == *"cron"* ]]; then
-        tags="$tags #cron"
-    fi
-    if [[ "$lower_task" == *"proxy"* ]] || [[ "$lower_prompt" == *"proxy"* ]]; then
-        tags="$tags #proxy"
-    fi
-    if [[ "$lower_task" == *"fetch"* ]] || [[ "$lower_prompt" == *"fetch"* ]]; then
-        tags="$tags #fetch"
-    fi
-    if [[ "$lower_task" == *"memory"* ]] || [[ "$lower_prompt" == *"memory"* ]]; then
-        tags="$tags #memory"
-    fi
-    if [[ "$lower_task" == *"telegram"* ]] || [[ "$lower_prompt" == *"telegram"* ]] || [[ "$lower_prompt" == *"tg"* ]]; then
-        tags="$tags #telegram"
-    fi
+    # Topic keywords mapping (keyword:tag)
+    local -a topic_map=(
+        "notion:#notion"
+        "cron:#cron"
+        "proxy:#proxy"
+        "fetch:#fetch"
+        "memory:#memory"
+        "telegram:#telegram"
+        "tg bot:#telegram"
+        "git:#git"
+        "api:#api"
+        "database:#database"
+        "db:#database"
+        "sqlite:#sqlite"
+        "gcp:#gcp"
+        "google:#google"
+        "obsidian:#obsidian"
+        "web3:#web3"
+        "defi:#defi"
+        "crypto:#crypto"
+        "test:#testing"
+        "debug:#debug"
+        "refactor:#refactor"
+        "security:#security"
+        "auth:#auth"
+        "deploy:#deploy"
+        "ci:#ci"
+        "docker:#docker"
+        "hook:#hooks"
+        "dispatch:#dispatch"
+        "bot:#bot"
+    )
+
+    # Check each topic
+    for mapping in "${topic_map[@]}"; do
+        local keyword="${mapping%%:*}"
+        local tag="${mapping#*:}"
+        if [[ "$combined" == *"$keyword"* ]]; then
+            # Avoid duplicate tags
+            if [[ "$tags" != *"$tag"* ]]; then
+                tags="$tags $tag"
+            fi
+        fi
+    done
 
     echo "$tags"
 }

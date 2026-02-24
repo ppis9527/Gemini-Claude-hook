@@ -83,4 +83,4 @@ cron-manager.sh enable "script.sh"
 建立 cron-manager.sh 讓 agents 透過 shell 管理 cron 任務，繞過 Gemini CLI sandbox 限制。
 
 ---
-#openclaw #tool #agents #cron
+#openclaw #2026-02-24 #tool #agents #cron

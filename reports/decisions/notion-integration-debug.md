@@ -81,4 +81,4 @@ node notion-sync.js query "⏳ 進行中 (In Progress)" # 篩選狀態
 修復 Notion API 版本與 token 衝突，新增 query 功能，連結所有 skills 到 Gemini CLI。
 
 ---
-#openclaw #skill #gemini #notion
+#openclaw #2026-02-24 #skill #gemini #notion
