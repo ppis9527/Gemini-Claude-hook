@@ -151,6 +151,49 @@ function scanSkills() {
     return skills;
 }
 
+// Extract description from Python file header
+function parsePyHeader(filePath) {
+    try {
+        const content = fs.readFileSync(filePath, 'utf8');
+        const lines = content.split('\n');
+
+        // Look for docstring """ or '''
+        let desc = '';
+        let inDocstring = false;
+        let docstringChar = '';
+
+        for (const line of lines) {
+            if (!inDocstring && (line.includes('"""') || line.includes("'''"))) {
+                docstringChar = line.includes('"""') ? '"""' : "'''";
+                inDocstring = true;
+                // Check if single line docstring
+                const match = line.match(new RegExp(`${docstringChar}(.+?)${docstringChar}`));
+                if (match) {
+                    desc = match[1].trim();
+                    break;
+                }
+                continue;
+            }
+            if (inDocstring) {
+                if (line.includes(docstringChar)) break;
+                if (line.trim() && !desc) {
+                    desc = line.trim();
+                    break;
+                }
+            }
+            // Fallback: # comment at top
+            if (line.startsWith('#') && !line.startsWith('#!') && !desc) {
+                desc = line.replace('#', '').trim();
+                if (desc) break;
+            }
+        }
+
+        return desc.slice(0, 100) + (desc.length > 100 ? '...' : '');
+    } catch (e) {
+        return '';
+    }
+}
+
 // Scan tools directory
 function scanTools() {
     const toolsDir = path.join(WORKSPACE, 'tools');
@@ -158,16 +201,28 @@ function scanTools() {
 
     if (!fs.existsSync(toolsDir)) return tools;
 
-    const files = fs.readdirSync(toolsDir).filter(f =>
-        f.endsWith('.js') || f.endsWith('.sh')
-    );
+    const items = fs.readdirSync(toolsDir);
 
-    for (const file of files.sort()) {
-        const filePath = path.join(toolsDir, file);
-        const desc = file.endsWith('.js')
-            ? parseJsHeader(filePath)
-            : parseShHeader(filePath);
-        tools.push({ name: file, desc: desc || '(no description)' });
+    for (const item of items.sort()) {
+        const itemPath = path.join(toolsDir, item);
+        const stat = fs.statSync(itemPath);
+
+        if (stat.isDirectory()) {
+            // Check for README.md in subdirectory
+            const readmePath = path.join(itemPath, 'README.md');
+            if (fs.existsSync(readmePath)) {
+                const { desc } = parseSkillMd(readmePath);
+                tools.push({ name: `${item}/`, desc: desc || '(tool directory)' });
+            } else {
+                tools.push({ name: `${item}/`, desc: '(tool directory)' });
+            }
+        } else if (item.endsWith('.js')) {
+            tools.push({ name: item, desc: parseJsHeader(itemPath) || '(no description)' });
+        } else if (item.endsWith('.sh')) {
+            tools.push({ name: item, desc: parseShHeader(itemPath) || '(no description)' });
+        } else if (item.endsWith('.py')) {
+            tools.push({ name: item, desc: parsePyHeader(itemPath) || '(no description)' });
+        }
     }
 
     return tools;

@@ -1,6 +1,6 @@
 # 工作區目錄 / Workspace Catalog
 
-**最後更新 / Last Updated**: 2026/2/24 下午7:12:07
+**最後更新 / Last Updated**: 2026/2/24 下午7:24:04
 
 ---
 
@@ -37,7 +37,7 @@ Skill modules available to AI agents.
 | `usage-monitor` | This skill analyzes session logs to provide data-driven insights into your AI ecosystem's usage patt... |
 | `vertex-proxy` | (no description) |
 
-## 工具 Tools (3)
+## 工具 Tools (5)
 
 獨立腳本與工具程式。
 Standalone scripts and utilities.
@@ -46,7 +46,9 @@ Standalone scripts and utilities.
 |-----------|------------------|
 | `daily-memory-digest.js` | Daily Memory Digest Generator |
 | `generate-index.js` | Generate INDEX.md for OpenClaw Workspace |
+| `github_trending_weekly.py` | GitHub Trending Weekly Report Generator (Robust Scraper Edition) |
 | `load-secrets.sh` | Load all API keys and tokens from GCP Secret Manager into env vars. |
+| `skill-usage-viz/` | Generates interactive HTML visualizations from usage-monitor Markdown reports. |
 
 ## 系統 System (3)
 
