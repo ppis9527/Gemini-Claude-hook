@@ -1,14 +1,15 @@
 # Cron Jobs for jerryyrliu
-# Last updated: 2026-02-25 00:00:01
+# Last updated: 2026-02-25 00:16:22
 
 TZ=Asia/Taipei
 
 0 */6 * * * /home/jerryyrliu/.openclaw/workspace/skills/memory-consolidation/src/periodic-memory-sync.sh
 0 */6 * * * /home/jerryyrliu/.openclaw/workspace/skills/memory-consolidation/src/daily-gemini-sync.sh
 0 4 * * 0 /home/jerryyrliu/.openclaw/workspace/skills/memory-consolidation/src/weekly-consolidation.sh >> /home/jerryyrliu/.openclaw/workspace/skills/memory-consolidation/pipeline_weekly.log 2>&1
-0 0 * * * ~/.openclaw/workspace/system/update-cron-list.sh
-0 22 * * * TZ='Asia/Taipei' node /home/jerryyrliu/.openclaw/workspace/tools/daily-memory-digest.js >> /home/jerryyrliu/.openclaw/workspace/logs/daily-digest.log 2>&1
-0 21 * * * TZ='Asia/Taipei' node /home/jerryyrliu/.openclaw/workspace/skills/system-monitor/system-health.js >> /home/jerryyrliu/.openclaw/workspace/logs/system-health.log 2>&1
 
-# Daily skill usage visualization (24hr snapshot at 5am)
+# Daily jobs (4:00-6:00 Taiwan time)
+0 4 * * * ~/.openclaw/workspace/system/update-cron-list.sh
+30 4 * * * TZ='Asia/Taipei' node /home/jerryyrliu/.openclaw/workspace/skills/system-monitor/system-health.js >> /home/jerryyrliu/.openclaw/workspace/logs/system-health.log 2>&1
 0 5 * * * TZ='Asia/Taipei' node /home/jerryyrliu/.openclaw/workspace/tools/skill-usage-viz/generate.js --days 1 >> /home/jerryyrliu/.openclaw/workspace/logs/skill-usage-viz.log 2>&1
+30 5 * * * TZ='Asia/Taipei' node /home/jerryyrliu/.openclaw/workspace/tools/daily-memory-digest.js >> /home/jerryyrliu/.openclaw/workspace/logs/daily-digest.log 2>&1
+0 6 * * * TZ='Asia/Taipei' node /home/jerryyrliu/.openclaw/workspace/tools/generate-index.js --upload >> /home/jerryyrliu/.openclaw/workspace/logs/generate-index.log 2>&1
