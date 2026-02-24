@@ -13,10 +13,14 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 
+const { execSync } = require('child_process');
+
 const MEMORY_ROOT = path.join(require('os').homedir(), '.openclaw/workspace/skills/memory-consolidation');
 const OBSERVATIONS_FILE = path.join(MEMORY_ROOT, 'observations.jsonl');
 const DB_PATH = path.join(MEMORY_ROOT, 'memory.db');
 const REPORTS_DIR = path.join(MEMORY_ROOT, 'reports', 'observations');
+const GDRIVE_FOLDER_ID = '1rQoOFRBngYCElmLFxG4mjD5KyO53uBlU';
+const GOG_ACCOUNT = 'jerryyrliu@gmail.com';
 
 const args = process.argv.slice(2);
 let targetDate = new Date().toISOString().slice(0, 10);
@@ -214,6 +218,25 @@ function main() {
     console.log(`  - Tools: ${Object.keys(analysis.toolCounts).length}`);
     console.log(`  - Patterns: ${patterns.length}`);
     console.log(`  - Instincts: ${instincts.length}`);
+
+    // Upload to Google Drive
+    if (observations.length > 0) {
+        try {
+            const gogPassword = execSync(
+                'gcloud secrets versions access latest --secret="GOG_KEYRING_PASSWORD"',
+                { encoding: 'utf8' }
+            ).trim();
+
+            const result = execSync(
+                `gog drive upload "${reportPath}" --parent ${GDRIVE_FOLDER_ID} --account ${GOG_ACCOUNT}`,
+                { encoding: 'utf8', env: { ...process.env, GOG_KEYRING_PASSWORD: gogPassword } }
+            );
+
+            console.log('[generate-observation-report] Uploaded to GDrive');
+        } catch (e) {
+            console.error('[generate-observation-report] GDrive upload failed:', e.message);
+        }
+    }
 }
 
 main();
