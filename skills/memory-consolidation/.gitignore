@@ -13,3 +13,4 @@ topics/
 observations.jsonl
 observations.archive/
 .observations_processed
+reports/observations/
