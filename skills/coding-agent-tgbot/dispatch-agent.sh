@@ -124,6 +124,43 @@ store_memory() {
     fi
 }
 
+# ============== Helper: Generate Hashtags ==============
+generate_hashtags() {
+    local tags="#openclaw #${AGENT}"
+
+    # Detect skill vs tool based on task name or prompt
+    local lower_task=$(echo "$TASK_NAME" | tr '[:upper:]' '[:lower:]')
+    local lower_prompt=$(echo "$PROMPT" | tr '[:upper:]' '[:lower:]')
+
+    if [[ "$lower_task" == *"skill"* ]] || [[ "$lower_prompt" == *"skill"* ]]; then
+        tags="$tags #skill"
+    elif [[ "$lower_task" == *"tool"* ]] || [[ "$lower_prompt" == *"tool"* ]]; then
+        tags="$tags #tool"
+    fi
+
+    # Detect specific topics
+    if [[ "$lower_task" == *"notion"* ]] || [[ "$lower_prompt" == *"notion"* ]]; then
+        tags="$tags #notion"
+    fi
+    if [[ "$lower_task" == *"cron"* ]] || [[ "$lower_prompt" == *"cron"* ]]; then
+        tags="$tags #cron"
+    fi
+    if [[ "$lower_task" == *"proxy"* ]] || [[ "$lower_prompt" == *"proxy"* ]]; then
+        tags="$tags #proxy"
+    fi
+    if [[ "$lower_task" == *"fetch"* ]] || [[ "$lower_prompt" == *"fetch"* ]]; then
+        tags="$tags #fetch"
+    fi
+    if [[ "$lower_task" == *"memory"* ]] || [[ "$lower_prompt" == *"memory"* ]]; then
+        tags="$tags #memory"
+    fi
+    if [[ "$lower_task" == *"telegram"* ]] || [[ "$lower_prompt" == *"telegram"* ]] || [[ "$lower_prompt" == *"tg"* ]]; then
+        tags="$tags #telegram"
+    fi
+
+    echo "$tags"
+}
+
 # ============== 1. Notify TG: Task Started ==============
 START_MSG="🚀 *${AGENT_NAME} 任務開始*
 
@@ -312,6 +349,9 @@ ${DECISION_REPORT}
 
 ## 摘要
 ${SUMMARY}
+
+---
+$(generate_hashtags)
 REPORT_EOF
 
 echo "[dispatch] Decision report saved: $REPORT_FILE"

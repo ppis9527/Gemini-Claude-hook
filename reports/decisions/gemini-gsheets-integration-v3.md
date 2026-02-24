@@ -33,3 +33,6 @@ tags:
 
 ## 摘要
 已將 skill-usage-viz 改為輸出 Google Sheets（使用 gog CLI）
+
+---
+#openclaw #tool #gemini #gsheets
