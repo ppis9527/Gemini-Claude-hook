@@ -8,3 +8,8 @@ mcp/node_modules/
 pipeline*.log
 logs/
 topics/
+
+# Observations (runtime)
+observations.jsonl
+observations.archive/
+.observations_processed
