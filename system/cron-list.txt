@@ -1,0 +1,9 @@
+# Cron Jobs for jerryyrliu
+# Last updated: 2026-02-24 13:40:19
+
+TZ=Asia/Taipei
+
+0 */6 * * * /home/jerryyrliu/.openclaw/workspace/skills/memory-consolidation/src/periodic-memory-sync.sh
+0 */6 * * * /home/jerryyrliu/.openclaw/workspace/skills/memory-consolidation/src/daily-gemini-sync.sh
+0 4 * * 0 /home/jerryyrliu/.openclaw/workspace/skills/memory-consolidation/src/weekly-consolidation.sh >> /home/jerryyrliu/.openclaw/workspace/skills/memory-consolidation/pipeline_weekly.log 2>&1
+0 0 * * * ~/.openclaw/workspace/system/update-cron-list.sh
