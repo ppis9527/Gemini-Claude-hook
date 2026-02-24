@@ -255,8 +255,41 @@ function scanSystem() {
     return items;
 }
 
+// Scan reports directory
+function scanReports() {
+    const reportsDir = path.join(WORKSPACE, 'reports');
+    const items = [];
+
+    if (!fs.existsSync(reportsDir)) return items;
+
+    const dirs = fs.readdirSync(reportsDir).filter(d => {
+        const stat = fs.statSync(path.join(reportsDir, d));
+        return stat.isDirectory();
+    });
+
+    // Predefined descriptions for known report types
+    const descriptions = {
+        'daily-digest': '每日摘要 / Daily digest',
+        'usage': 'Skill 使用統計報告 / Skill usage statistics',
+        'system-health': '系統健康報告 / System health reports',
+        'decisions': '決策紀錄 / Decision records',
+        'github_weekly': 'GitHub 每週趨勢 / GitHub weekly trends',
+        'openclaw-spec': 'OpenClaw 規格文件 / OpenClaw specifications'
+    };
+
+    for (const dir of dirs.sort()) {
+        const desc = descriptions[dir] || '(reports)';
+        // Count files in directory
+        const dirPath = path.join(reportsDir, dir);
+        const fileCount = fs.readdirSync(dirPath).filter(f => !f.startsWith('.')).length;
+        items.push({ name: `${dir}/`, desc: `${desc} (${fileCount} files)` });
+    }
+
+    return items;
+}
+
 // Generate markdown (bilingual: 繁體中文 + English)
-function generateMarkdown(skills, tools, system) {
+function generateMarkdown(skills, tools, system, reports) {
     const date = getDate();
     const timestamp = getTimestamp();
 
@@ -305,6 +338,20 @@ System configuration and management scripts.
 
     for (const s of system) {
         md += `| \`${s.name}\` | ${s.desc.replace(/\|/g, '\\|')} |\n`;
+    }
+
+    md += `
+## 報告 Reports (${reports.length})
+
+自動產生的報告資料夾。
+Auto-generated report directories.
+
+| 名稱 Name | 說明 Description |
+|-----------|------------------|
+`;
+
+    for (const r of reports) {
+        md += `| \`${r.name}\` | ${r.desc.replace(/\|/g, '\\|')} |\n`;
     }
 
     md += `
@@ -383,7 +430,10 @@ function main() {
     const system = scanSystem();
     console.log(`  Found ${system.length} system items`);
 
-    const md = generateMarkdown(skills, tools, system);
+    const reports = scanReports();
+    console.log(`  Found ${reports.length} report types`);
+
+    const md = generateMarkdown(skills, tools, system, reports);
 
     // Save locally
     fs.writeFileSync(OUTPUT_FILE, md);

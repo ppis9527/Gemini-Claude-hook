@@ -1,6 +1,6 @@
 # 工作區目錄 / Workspace Catalog
 
-**最後更新 / Last Updated**: 2026/2/24 下午7:24:04
+**最後更新 / Last Updated**: 2026/2/24 下午8:04:36
 
 ---
 
@@ -60,6 +60,20 @@ System configuration and management scripts.
 | `cron-list.txt` | Configuration file |
 | `cron-manager.sh` | Cron Manager - 給 agents 用的 cron 管理工具 |
 | `update-cron-list.sh` | Updates cron-list.txt from actual crontab |
+
+## 報告 Reports (6)
+
+自動產生的報告資料夾。
+Auto-generated report directories.
+
+| 名稱 Name | 說明 Description |
+|-----------|------------------|
+| `daily-digest/` | 每日摘要 / Daily digest (2 files) |
+| `decisions/` | 決策紀錄 / Decision records (8 files) |
+| `github_weekly/` | GitHub 每週趨勢 / GitHub weekly trends (1 files) |
+| `openclaw-spec/` | OpenClaw 規格文件 / OpenClaw specifications (1 files) |
+| `system-health/` | 系統健康報告 / System health reports (1 files) |
+| `usage/` | Skill 使用統計報告 / Skill usage statistics (3 files) |
 
 ---
 
