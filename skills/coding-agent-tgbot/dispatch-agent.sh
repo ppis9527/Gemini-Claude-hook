@@ -95,22 +95,35 @@ fi
 send_telegram() {
     local message="$1"
 
-    # Try openclaw first, fallback to curl if it fails
-    if [ -x "$OPENCLAW_BIN" ] && "$OPENCLAW_BIN" message send \
-        --channel telegram \
-        --target "$TELEGRAM_GROUP" \
-        --message "$message" 2>/dev/null; then
-        return 0
+    # Get token from gcloud secrets
+    local TOKEN
+    TOKEN=$(gcloud secrets versions access latest --secret=TELEGRAM_TOKEN_MAIN 2>/dev/null || echo "")
+
+    if [ -z "$TOKEN" ]; then
+        echo "[dispatch] Warning: No Telegram token available" >&2
+        return 1
+    fi
+
+    # Try openclaw first (needs TELEGRAM_BOT_TOKEN env var)
+    if [ -x "$OPENCLAW_BIN" ]; then
+        TELEGRAM_BOT_TOKEN="$TOKEN" "$OPENCLAW_BIN" message send \
+            --channel telegram \
+            --target "$TELEGRAM_GROUP" \
+            --message "$message" 2>/dev/null && return 0
     fi
 
     # Direct Telegram API fallback
-    local TOKEN
-    TOKEN=$(gcloud secrets versions access latest --secret=TELEGRAM_TOKEN_MAIN 2>/dev/null || echo "")
-    if [ -n "$TOKEN" ]; then
-        curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
-            -d chat_id="$TELEGRAM_GROUP" \
-            -d text="$message" \
-            -d parse_mode="Markdown" >/dev/null 2>&1 || true
+    local result
+    result=$(curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+        -d chat_id="$TELEGRAM_GROUP" \
+        -d text="$message" \
+        -d parse_mode="Markdown" 2>&1)
+
+    if echo "$result" | grep -q '"ok":true'; then
+        return 0
+    else
+        echo "[dispatch] TG send failed: $result" >&2
+        return 1
     fi
 }
 
