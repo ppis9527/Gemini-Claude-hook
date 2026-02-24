@@ -40,7 +40,7 @@ async function findSimilar(db, candidateVec, threshold, maxCount) {
 }
 
 function callGeminiForDedup(prompt) {
-  const result = spawnSync('gemini', ['-p', prompt, '-m', 'gemini-2.0-flash-lite'], {
+  const result = spawnSync('gemini', ['-p', prompt, '-m', 'gemini-2.5-flash-lite'], {
     encoding: 'utf8',
     env: {
       ...process.env,
