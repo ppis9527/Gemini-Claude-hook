@@ -170,17 +170,44 @@ async function main() {
 
             const result = await callNotion('/pages', 'POST', payload);
             console.log(`✅ Task created: ${result.url}`);
+        } else if (action === 'delete') {
+            const pageId = process.argv[3];
+            if (!pageId) {
+                console.error('Error: pageId is required for delete action.');
+                process.exit(1);
+            }
+            const result = await callNotion(`/pages/${pageId}`, 'PATCH', {
+                archived: true
+            });
+            console.log(`✅ Page archived: ${result.url || pageId}`);
+        } else if (action === 'update') {
+            const pageId = process.argv[3];
+            const status = process.argv[4];
+            if (!pageId || !status) {
+                console.error('Error: pageId and status are required for update action.');
+                process.exit(1);
+            }
+            const result = await callNotion(`/pages/${pageId}`, 'PATCH', {
+                properties: {
+                    'Status': { select: { name: status } }
+                }
+            });
+            console.log(`✅ Task status updated to "${status}": ${result.url || pageId}`);
         } else {
             console.log(`Usage:
   node notion-sync.js query [status] [type]     查詢任務
   node notion-sync.js task <title> <agent> [priority] [status] [desc]  建立任務
   node notion-sync.js report <title> <agent>    建立報告
+  node notion-sync.js delete <page_id>          刪除（封存）項目
+  node notion-sync.js update <page_id> <status> 更新任務狀態
 
 Examples:
   node notion-sync.js query                     列出所有項目
   node notion-sync.js query "進行中"            列出進行中的任務
   node notion-sync.js query "未開始" "Task"     列出未開始的 Task
   node notion-sync.js task "修復 bug" "貳俠" "High" "進行中"
+  node notion-sync.js delete "abc-123"          刪除指定 ID 的項目
+  node notion-sync.js update "abc-123" "已完成"  將任務狀態設為已完成
 `);
         }
     } catch (error) {

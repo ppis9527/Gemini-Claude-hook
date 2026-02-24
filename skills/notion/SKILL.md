@@ -39,6 +39,18 @@ After running a monitor, push the results to Notion:
 node scripts/notion-sync.js report "[AUTO] Weekly Stats" "Gemini"
 ```
 
+### 4. Delete (Archive) an Item
+Archive a page by its Notion ID:
+```bash
+node scripts/notion-sync.js delete "your-page-id-here"
+```
+
+### 5. Update Task Status
+Update the status of an existing task:
+```bash
+node scripts/notion-sync.js update "your-page-id-here" "已完成"
+```
+
 ## 📋 Database Standards (ErXia Hub 2.0)
 
 When using this skill, the following fields are automatically managed:
