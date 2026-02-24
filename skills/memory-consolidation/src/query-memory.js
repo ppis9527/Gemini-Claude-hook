@@ -123,7 +123,42 @@ function getRelevantAgentMemory(limit = 5) {
     });
 }
 
-function formatText(digest, l1Facts, topErrors = [], agentMemory = []) {
+/**
+ * Get high-confidence instincts for session injection.
+ * Instincts are learned behavioral rules from repeated observations.
+ * @param {number} limit - Maximum number of entries to return
+ * @param {number} minConfidence - Minimum confidence threshold (default 0.6)
+ * @returns {Array} Array of {key, value} objects
+ */
+function getInstincts(limit = 10, minConfidence = 0.6) {
+    if (!fs.existsSync(dbPath)) return [];
+    const db = new Database(dbPath, { readonly: true });
+
+    let rows;
+    try {
+        rows = db.prepare(`
+            SELECT key, value FROM memories
+            WHERE key LIKE 'agent.instinct.%' AND end_time IS NULL
+            ORDER BY start_time DESC
+            LIMIT ?
+        `).all(limit * 2); // Fetch more, then filter by confidence
+    } catch {
+        rows = [];
+    }
+
+    db.close();
+
+    return rows
+        .map(r => {
+            let value;
+            try { value = JSON.parse(r.value); } catch { value = r.value; }
+            return { key: r.key, value };
+        })
+        .filter(r => typeof r.value === 'object' && r.value.confidence >= minConfidence)
+        .slice(0, limit);
+}
+
+function formatText(digest, l1Facts, topErrors = [], agentMemory = [], instincts = []) {
     const lines = [];
     if (digest) {
         const config = loadConfig();
@@ -183,6 +218,17 @@ function formatText(digest, l1Facts, topErrors = [], agentMemory = []) {
             }
         }
     }
+    // Add instincts section (learned behavioral rules)
+    if (instincts.length > 0) {
+        lines.push('[Instincts — learned behaviors (do not repeat mistakes)]');
+        for (const { key, value } of instincts) {
+            const domain = key.split('.')[2] || 'general';
+            const conf = value.confidence ? `${Math.round(value.confidence * 100)}%` : '';
+            const trigger = value.trigger || '';
+            const action = value.action || '';
+            lines.push(`[${domain}] ${trigger} → ${action} (${conf})`);
+        }
+    }
     return lines.join('\n');
 }
 
@@ -190,20 +236,22 @@ function main() {
     const opts   = parseArgs();
     const digest = loadDigest();
     const l1Facts = (opts.keys || opts.prefix) ? queryL1(opts) : [];
-    // Get top errors and agent memory for SessionStart injection
+    // Get top errors, agent memory, and instincts for SessionStart injection
     const isHookFormat = opts.format === 'claude' || opts.format === 'gemini-hook';
     const topErrors = isHookFormat ? getTopErrors(5) : [];
     const agentMemory = isHookFormat ? getRelevantAgentMemory(5) : [];
+    const instincts = isHookFormat ? getInstincts(8, 0.6) : [];
 
     if (opts.format === 'json') {
         process.stdout.write(JSON.stringify({
             digest,
             facts: l1Facts,
             errors: topErrors,
-            agentMemory
+            agentMemory,
+            instincts
         }, null, 2) + '\n');
     } else if (opts.format === 'gemini-hook') {
-        const textOutput = formatText(digest, l1Facts, topErrors, agentMemory);
+        const textOutput = formatText(digest, l1Facts, topErrors, agentMemory, instincts);
         const hookResponse = {
             hookSpecificOutput: {
                 additionalContext: textOutput
@@ -214,7 +262,7 @@ function main() {
         process.stdout.write(JSON.stringify(hookResponse, null, 2) + '\n');
     } else if (opts.format === 'claude') {
         // Claude Code SessionStart hook format
-        const textOutput = formatText(digest, l1Facts, topErrors, agentMemory);
+        const textOutput = formatText(digest, l1Facts, topErrors, agentMemory, instincts);
         const hookResponse = {
             hookSpecificOutput: {
                 additionalContext: textOutput
@@ -222,7 +270,7 @@ function main() {
         };
         process.stdout.write(JSON.stringify(hookResponse) + '\n');
     } else {
-        process.stdout.write(formatText(digest, l1Facts, topErrors, agentMemory) + '\n');
+        process.stdout.write(formatText(digest, l1Facts, topErrors, agentMemory, instincts) + '\n');
     }
 }
 
