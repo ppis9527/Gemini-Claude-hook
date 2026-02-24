@@ -236,19 +236,26 @@ EOF
 TASK_OUTPUT="${RESULTS_DIR}/task-output.txt"
 
 # ============== 4. Prepare Prompt with Report Format ==============
+# Get Taiwan date for prompt
+TW_DATE=$(TZ='Asia/Taipei' date +%Y-%m-%d)
+
 FULL_PROMPT="${PROMPT}
 
 ---
 完成後請提供：
 1. 決策報告 (≤500字)：說明做了什麼、為什麼這樣做、關鍵決策點
 2. 一句話摘要 (≤50字)：給 Telegram 通知用
+3. Hashtags：用於 Obsidian 搜索，格式如下
 
 格式：
 ## 決策報告
 [報告內容]
 
 ## 摘要
-[一句話摘要]"
+[一句話摘要]
+
+---
+#openclaw #${TW_DATE} #${AGENT} [其他相關標籤，如 #skill #notion #api #debug 等]"
 
 # Write prompt to temp file to avoid shell escaping issues
 PROMPT_FILE=$(mktemp)
@@ -329,9 +336,9 @@ rm -f "$PROMPT_FILE"
 # Read output from file for processing
 AGENT_FULL_OUTPUT=$(cat "$TASK_OUTPUT" 2>/dev/null || echo "")
 
-# ============== 6. Extract Summary and Decision Report ==============
+# ============== 6. Extract Summary, Decision Report, and Hashtags ==============
 # Look for "## 摘要" section
-SUMMARY=$(echo "$AGENT_FULL_OUTPUT" | sed -n '/^## 摘要/,/^##/p' | sed '1d;/^##/d' | head -c 100 | tr '\n' ' ')
+SUMMARY=$(echo "$AGENT_FULL_OUTPUT" | sed -n '/^## 摘要/,/^---/p' | sed '1d;/^---/d' | head -c 100 | tr '\n' ' ')
 if [ -z "$SUMMARY" ]; then
     SUMMARY="任務已完成（無摘要）"
 fi
@@ -340,6 +347,13 @@ fi
 DECISION_REPORT=$(echo "$AGENT_FULL_OUTPUT" | sed -n '/^## 決策報告/,/^## 摘要/p' | sed '1d;/^## 摘要/d')
 if [ -z "$DECISION_REPORT" ]; then
     DECISION_REPORT="（無決策報告）"
+fi
+
+# Extract hashtags from agent output (lines starting with #openclaw)
+AGENT_HASHTAGS=$(echo "$AGENT_FULL_OUTPUT" | grep -E "^#openclaw" | tail -1)
+if [ -z "$AGENT_HASHTAGS" ]; then
+    # Fallback to auto-generated hashtags
+    AGENT_HASHTAGS=$(generate_hashtags)
 fi
 
 # ============== 7. Save Decision Report as Markdown ==============
@@ -379,7 +393,7 @@ ${DECISION_REPORT}
 ${SUMMARY}
 
 ---
-$(generate_hashtags)
+${AGENT_HASHTAGS}
 REPORT_EOF
 
 echo "[dispatch] Decision report saved: $REPORT_FILE"
