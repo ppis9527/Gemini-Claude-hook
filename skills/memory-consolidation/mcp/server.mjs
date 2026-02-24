@@ -14,6 +14,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { embedTexts, cosineSimilarity } = require(
   path.join(__dirname, "..", "src", "embed.js")
 );
+const { applyVerdict } = require(
+  path.join(__dirname, "..", "src", "verdict.js")
+);
 const DB_PATH = path.join(__dirname, "..", "memory.db");
 const DIGEST_PATH = path.join(__dirname, "..", "memory_digest.json");
 const CONFIG_PATH = path.join(__dirname, "..", "digest-config.json");
@@ -92,9 +95,15 @@ server.registerTool(
       semantic: z.string().optional().describe("Semantic search — find facts by meaning, not exact words (e.g. 'editor' finds 'user.ide: vscode')"),
       query: z.string().optional().describe("Full-text search across keys and values (FTS5)"),
       limit: z.number().int().min(1).max(500).optional().describe("Max results to return (default 50)"),
+      // Four-Step Verdict parameters
+      sourceVerified: z.boolean().optional().describe("Exclude inferred.* keys (only return user-stated facts)"),
+      subject: z.string().optional().describe("Filter by subject (key must include this string)"),
+      maxAgeDays: z.number().optional().describe("Filter by age (only return facts from last N days)"),
+      // Type filtering (uses type_mappings from config)
+      type: z.enum(["fact", "pref", "entity", "event", "agent", "inferred", "error", "all"]).optional().describe("Filter by memory type: fact, pref, entity, event, agent, inferred, error, or all"),
     },
   },
-  async ({ prefix, keys, semantic, query, limit }) => {
+  async ({ prefix, keys, semantic, query, limit, sourceVerified, subject, maxAgeDays, type }) => {
     const db = openDb(true);
     const maxRows = limit || 50;
     let rows;
@@ -103,7 +112,7 @@ server.registerTool(
       const placeholders = keys.map(() => "?").join(",");
       rows = db
         .prepare(
-          `SELECT key, value FROM memories
+          `SELECT key, value, start_time FROM memories
            WHERE end_time IS NULL AND key IN (${placeholders})
            ORDER BY start_time DESC
            LIMIT ?`
@@ -114,7 +123,7 @@ server.registerTool(
       const [queryEmb] = await embedTexts([semantic]);
       const allRows = db
         .prepare(
-          `SELECT key, value, embedding FROM memories
+          `SELECT key, value, start_time, embedding FROM memories
            WHERE embedding IS NOT NULL AND end_time IS NULL`
         )
         .all();
@@ -128,7 +137,7 @@ server.registerTool(
         );
         const sim = cosineSimilarity(queryEmb, emb);
         if (sim >= 0.3) {
-          scored.push({ key: r.key, value: r.value, similarity: sim });
+          scored.push({ key: r.key, value: r.value, start_time: r.start_time, similarity: sim });
         }
       }
       scored.sort((a, b) => b.similarity - a.similarity);
@@ -142,7 +151,7 @@ server.registerTool(
         .join(" ");
       rows = db
         .prepare(
-          `SELECT m.key, m.value
+          `SELECT m.key, m.value, m.start_time
            FROM memories m
            JOIN memories_fts fts ON m.rowid = fts.rowid
            WHERE memories_fts MATCH ? AND m.end_time IS NULL
@@ -153,7 +162,7 @@ server.registerTool(
     } else if (prefix) {
       rows = db
         .prepare(
-          `SELECT key, value FROM memories
+          `SELECT key, value, start_time FROM memories
            WHERE end_time IS NULL AND key LIKE ?
            ORDER BY start_time DESC
            LIMIT ?`
@@ -162,7 +171,7 @@ server.registerTool(
     } else {
       rows = db
         .prepare(
-          `SELECT key, value FROM memories
+          `SELECT key, value, start_time FROM memories
            WHERE end_time IS NULL
            ORDER BY start_time DESC
            LIMIT ?`
@@ -171,6 +180,21 @@ server.registerTool(
     }
 
     db.close();
+
+    // Apply Four-Step Verdict filtering
+    if (sourceVerified || subject || maxAgeDays) {
+      rows = applyVerdict(rows, { sourceVerified, subject, maxAgeDays });
+    }
+
+    // Apply type filtering using type_mappings from config
+    if (type && type !== "all") {
+      const config = loadConfig();
+      const typeMappings = config.type_mappings || {};
+      const prefixes = typeMappings[type] || [];
+      if (prefixes.length > 0) {
+        rows = rows.filter(r => prefixes.some(p => r.key && r.key.startsWith(p)));
+      }
+    }
 
     if (rows.length === 0) {
       return { content: [{ type: "text", text: "No matching facts found." }] };

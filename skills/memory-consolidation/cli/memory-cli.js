@@ -13,6 +13,7 @@
 const path = require('path');
 const Database = require(path.join(__dirname, '..', 'src', 'node_modules', 'better-sqlite3'));
 const { embedTexts, cosineSimilarity } = require(path.join(__dirname, '..', 'src', 'embed.js'));
+const { applyVerdict } = require(path.join(__dirname, '..', 'src', 'verdict.js'));
 
 const DB_PATH = path.join(__dirname, '..', 'memory.db');
 const MAX_ROWS = 50;
@@ -69,37 +70,46 @@ async function cmdSearch(opts) {
 
   if (opts.key) {
     rows = db.prepare(
-      'SELECT key, value FROM memories WHERE end_time IS NULL AND key = ? ORDER BY start_time DESC LIMIT ?'
+      'SELECT key, value, start_time FROM memories WHERE end_time IS NULL AND key = ? ORDER BY start_time DESC LIMIT ?'
     ).all(opts.key, MAX_ROWS);
   } else if (opts.semantic) {
     const [queryEmb] = await embedTexts([opts.semantic]);
     const allRows = db.prepare(
-      'SELECT key, value, embedding FROM memories WHERE embedding IS NOT NULL AND end_time IS NULL'
+      'SELECT key, value, start_time, embedding FROM memories WHERE embedding IS NOT NULL AND end_time IS NULL'
     ).all();
     const scored = [];
     for (const r of allRows) {
       const emb = new Float32Array(r.embedding.buffer, r.embedding.byteOffset, r.embedding.byteLength / 4);
       const sim = cosineSimilarity(queryEmb, emb);
-      if (sim >= 0.3) scored.push({ key: r.key, value: r.value, sim });
+      if (sim >= 0.3) scored.push({ key: r.key, value: r.value, start_time: r.start_time, sim });
     }
     scored.sort((a, b) => b.sim - a.sim);
     rows = scored.slice(0, MAX_ROWS);
   } else if (opts.query) {
     const safeQuery = opts.query.split(/\s+/).filter(Boolean).map(t => `"${t.replace(/"/g, '""')}"`).join(' ');
     rows = db.prepare(
-      'SELECT m.key, m.value FROM memories m JOIN memories_fts fts ON m.rowid = fts.rowid WHERE memories_fts MATCH ? AND m.end_time IS NULL ORDER BY rank LIMIT ?'
+      'SELECT m.key, m.value, m.start_time FROM memories m JOIN memories_fts fts ON m.rowid = fts.rowid WHERE memories_fts MATCH ? AND m.end_time IS NULL ORDER BY rank LIMIT ?'
     ).all(safeQuery, MAX_ROWS);
   } else if (opts.prefix) {
     rows = db.prepare(
-      'SELECT key, value FROM memories WHERE end_time IS NULL AND key LIKE ? ORDER BY start_time DESC LIMIT ?'
+      'SELECT key, value, start_time FROM memories WHERE end_time IS NULL AND key LIKE ? ORDER BY start_time DESC LIMIT ?'
     ).all(opts.prefix + '%', MAX_ROWS);
   } else {
     rows = db.prepare(
-      'SELECT key, value FROM memories WHERE end_time IS NULL ORDER BY start_time DESC LIMIT ?'
+      'SELECT key, value, start_time FROM memories WHERE end_time IS NULL ORDER BY start_time DESC LIMIT ?'
     ).all(MAX_ROWS);
   }
 
   db.close();
+
+  // Apply Four-Step Verdict filtering
+  if (opts.verified || opts.subject || opts.maxAge) {
+    rows = applyVerdict(rows, {
+      sourceVerified: opts.verified,
+      subject: opts.subject,
+      maxAgeDays: opts.maxAge
+    });
+  }
 
   if (rows.length === 0) {
     console.log('No matching facts found.');
@@ -138,6 +148,10 @@ async function main() {
       else if (rest[i] === '--query' && rest[i + 1]) { opts.query = rest[++i]; }
       else if (rest[i] === '--semantic' && rest[i + 1]) { opts.semantic = rest[++i]; }
       else if (rest[i] === '--key' && rest[i + 1]) { opts.key = rest[++i]; }
+      // Four-Step Verdict parameters
+      else if (rest[i] === '--verified') { opts.verified = true; }
+      else if (rest[i] === '--subject' && rest[i + 1]) { opts.subject = rest[++i]; }
+      else if (rest[i] === '--max-age' && rest[i + 1]) { opts.maxAge = parseInt(rest[++i], 10); }
     }
     await cmdSearch(opts);
   } else if (cmd === 'summary') {
