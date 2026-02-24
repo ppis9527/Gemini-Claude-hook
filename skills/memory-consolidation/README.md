@@ -48,7 +48,8 @@ Built for [OpenClaw](https://openclaw.ai/), also works with Claude Code and Gemi
 | **Weekly Cron** | `src/weekly-consolidation.sh` | Weekly topic consolidation (steps 7-8) |
 | **MCP Server** | `mcp/server.mjs` | Model Context Protocol server for Claude Code & Gemini CLI |
 | **CLI** | `cli/memory-cli.js` | Command-line interface for OpenClaw agents (via `exec`) |
-| **Hook** | `src/query-memory.js` | SessionStart hook that injects memory summary |
+| **Instinct CLI** | `cli/instinct-cli.js` | Manage learned behavioral rules (instincts) |
+| **Hook** | `src/query-memory.js` | SessionStart hook that injects memory summary + instincts |
 
 ## Quick Start
 
@@ -142,6 +143,9 @@ topics/
 # Every 6 hours: steps 1-6 (Gemini CLI sessions)
 0 */6 * * * /path/to/src/daily-gemini-sync.sh
 
+# Every 6 hours +30min: instinct extraction (after memory sync)
+30 */6 * * * node /path/to/cli/instinct-cli.js extract --store
+
 # Sunday 4am: steps 7-8 (weekly consolidation)
 0 4 * * 0 /path/to/src/weekly-consolidation.sh
 ```
@@ -198,7 +202,63 @@ node cli/memory-cli.js summary
 
 ```
 [Memory — 2026-02-21 | 742 facts] agent(105) memory(87) task(81) ...
+[Instincts — learned behaviors (do not repeat mistakes)]
+[error] when encountering test failure → Use Bash (90%)
+[tool] when edit functionality is needed → Prefer using Edit tool (80%)
 ```
+
+## Instincts
+
+Instincts are behavioral rules derived from repeated observations (cases & patterns). They help agents avoid repeating past mistakes.
+
+### Key Pattern
+
+```
+agent.instinct.<domain>.<id>
+```
+
+Domains: `error`, `workflow`, `tool`, `coding`, `testing`
+
+### Extraction
+
+```bash
+# Extract from existing cases/patterns
+node src/extract-instincts.js --store
+
+# Or via CLI
+node cli/instinct-cli.js extract --store
+```
+
+### Instinct CLI
+
+```bash
+# List all instincts
+node cli/instinct-cli.js list
+
+# Filter by domain
+node cli/instinct-cli.js list --domain error
+
+# Show details
+node cli/instinct-cli.js show agent.instinct.error.test_failure
+
+# Statistics
+node cli/instinct-cli.js stats
+
+# Delete
+node cli/instinct-cli.js delete <key>
+```
+
+### Confidence Scoring
+
+| Count | Confidence |
+|-------|------------|
+| 2 | 50% |
+| 3 | 60% |
+| 5 | 70% |
+| 7 | 80% |
+| 10+ | 90% |
+
+Only instincts with confidence ≥60% are injected at SessionStart.
 
 ## Fact Schema
 
@@ -235,12 +295,14 @@ memory-consolidation/
 │   ├── embed.js                 # Gemini embedding utility (zero npm deps)
 │   ├── convert-gemini-sessions.js  # Gemini CLI session converter
 │   ├── query-memory.js          # SessionStart hook script
+│   ├── extract-instincts.js     # Instinct extraction from cases/patterns
 │   └── archive-daily-logs.js    # Log archival utility
 ├── mcp/
 │   ├── server.mjs               # MCP server (stdio transport)
 │   └── package.json
 ├── cli/
-│   └── memory-cli.js            # CLI for OpenClaw agents
+│   ├── memory-cli.js            # CLI for OpenClaw agents
+│   └── instinct-cli.js          # Instinct management CLI
 ├── logs/                        # Daily logs (gitignored)
 │   └── YYYY-MM-DD.md
 ├── topics/                      # Topic files (gitignored)
@@ -272,6 +334,15 @@ memory-consolidation/
 - `@modelcontextprotocol/sdk`, `zod` (installed via npm in `mcp/`)
 
 ## Changelog
+
+### v2.4.0 (2026-02-25)
+
+- Added **Instincts**: behavioral rules derived from cases/patterns
+- `src/extract-instincts.js`: aggregates cases/patterns into instincts
+- `cli/instinct-cli.js`: CLI for list/show/stats/extract/delete
+- `src/query-memory.js`: now injects instincts at SessionStart
+- New key pattern: `agent.instinct.<domain>.<id>`
+- Cron job: instinct extraction every 6 hours (+30min after sync)
 
 ### v2.3.0 (2026-02-23)
 
