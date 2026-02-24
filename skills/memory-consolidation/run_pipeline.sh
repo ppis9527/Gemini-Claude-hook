@@ -22,6 +22,13 @@ run_extraction_for_file() {
     node "$SRC_DIR/1-extract-facts.js" "$input_file"
 }
 
+run_agent_learnings_for_file() {
+    local input_file="$1"
+    # Extract agent learnings (cases/patterns) and store directly to DB
+    # Output is JSON array, --store flag commits to memory.db
+    node "$SRC_DIR/extract-agent-learnings.js" "$input_file" --store 2>/dev/null || true
+}
+
 if [ "${1:-}" = "--gemini" ]; then
     GEMINI_OUTPUT_DIR="/tmp/gemini-converted-$$"
     echo "--- Gemini CLI ingestion at $(date) ---"
@@ -44,6 +51,7 @@ if [ "${1:-}" = "--gemini" ]; then
     echo "Step 1: Extracting facts from ${#FILES[@]} converted sessions..."
     for f in $(printf '%s\n' "${FILES[@]}" | sort); do
         run_extraction_for_file "$f"
+        run_agent_learnings_for_file "$f"
     done
 
     # Clean up temp dir
@@ -72,6 +80,7 @@ elif [ "${1:-}" = "--backfill" ]; then
     echo "Step 1: Extracting facts from ${#FILES[@]} files (in date order)..."
     for f in $(printf '%s\n' "${FILES[@]}" | sort); do
         run_extraction_for_file "$f"
+        run_agent_learnings_for_file "$f"
     done
 
 elif [ "${1:-}" = "--backfill-all-openclaw-agents" ]; then
@@ -105,6 +114,7 @@ elif [ "${1:-}" = "--backfill-all-openclaw-agents" ]; then
     # Sort ensures chronological order
     for f in $(printf '%s\n' "${FOUND_FILES[@]}" | sort); do
         run_extraction_for_file "$f"
+        run_agent_learnings_for_file "$f"
     done
 
 else
@@ -125,6 +135,7 @@ else
 
     echo "Step 1: Extracting facts..."
     node "$SRC_DIR/1-extract-facts.js" "$INPUT_FILE"
+    run_agent_learnings_for_file "$INPUT_FILE"
 fi
 
 echo "Step 2: Aligning facts temporally..."
