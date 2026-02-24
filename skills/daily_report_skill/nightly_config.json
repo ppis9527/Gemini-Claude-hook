@@ -1,0 +1,60 @@
+{
+  "_comment": "Nightly Build System Configuration",
+  "_description": "This configuration file defines which tasks to run during the nightly build process",
+  
+  "abort_on_preflight_failure": false,
+  
+  "enabled_tasks": [
+    {
+      "name": "system-health",
+      "description": "Check system disk space and health metrics",
+      "is_write_operation": false,
+      "params": {}
+    }
+  ],
+  
+  "_task_template": {
+    "_comment": "Template for adding new tasks",
+    "name": "task-module-name",
+    "description": "Human-readable description of what this task does",
+    "is_write_operation": false,
+    "target_resources": [],
+    "params": {}
+  },
+  
+  "_examples": {
+    "_comment": "Example task configurations for reference",
+    
+    "git_summary_example": {
+      "name": "git-summary",
+      "description": "Generate summary of Git repository changes",
+      "is_write_operation": false,
+      "params": {
+        "repo_path": "/path/to/repo",
+        "since": "24h"
+      }
+    },
+    
+    "cleanup_example": {
+      "name": "cleanup-temp",
+      "description": "Clean up temporary files older than 7 days",
+      "is_write_operation": true,
+      "target_resources": ["/tmp/project_cache"],
+      "params": {
+        "age_days": 7,
+        "dry_run": false
+      }
+    },
+    
+    "backup_example": {
+      "name": "backup-config",
+      "description": "Backup configuration files to archive",
+      "is_write_operation": true,
+      "target_resources": ["/etc/myapp/config"],
+      "params": {
+        "destination": "/backups/configs",
+        "compress": true
+      }
+    }
+  }
+}
