@@ -1,3 +1,11 @@
+---
+name: smart-fetch
+description: Token-efficient web scraping with Playwright
+version: 1.0.0
+tools:
+  - fetch.js
+---
+
 # smart-fetch
 
 Token-efficient web scraping with Playwright.
@@ -41,7 +49,7 @@ smart-fetch urls.txt --batch
 |--------|-------------|
 | `--selector <css>` | CSS selector to extract specific elements |
 | `--readability` | Use Readability.js to extract main content |
-| `--proxy` | Use US proxy (socks5://34.11.202.94:1080) |
+| `--proxy` | Use US proxy (socks5://136.109.240.186:1080) |
 | `--wait <ms>` | Wait for dynamic content (default: 1000) |
 | `--format <fmt>` | Output format: text, markdown, json (default: text) |
 | `--screenshot <file>` | Save screenshot to file |
