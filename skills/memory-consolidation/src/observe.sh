@@ -54,7 +54,7 @@ try:
     # Extract fields from Claude Code hook format
     tool_name = data.get("tool_name", data.get("tool", "unknown"))
     tool_input = data.get("tool_input", data.get("input", {}))
-    tool_output = data.get("tool_output", data.get("output", ""))
+    tool_output = data.get("tool_output", data.get("tool_response", data.get("output", "")))
     session_id = data.get("session_id", "unknown")
 
     # Truncate large values
