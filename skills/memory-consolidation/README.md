@@ -50,6 +50,7 @@ Built for [OpenClaw](https://openclaw.ai/), also works with Claude Code and Gemi
 | **CLI** | `cli/memory-cli.js` | Command-line interface for OpenClaw agents (via `exec`) |
 | **Instinct CLI** | `cli/instinct-cli.js` | Manage learned behavioral rules (instincts) |
 | **Hook** | `src/query-memory.js` | SessionStart hook that injects memory summary + instincts |
+| **Gemini Extract** | `src/gemini-session-extract.js` | SessionEnd/PreCompress hook for real-time Gemini fact extraction |
 
 ## Quick Start
 
@@ -196,7 +197,9 @@ node cli/memory-cli.js summary
 - **Query:** Cosine similarity at runtime, threshold >= 0.3
 - **Auth:** Vertex AI (`gcloud` token, no TPM limit) > API key (env/Secret Manager fallback)
 
-## SessionStart Hook
+## Hooks
+
+### SessionStart Hook
 
 `src/query-memory.js` injects a compact memory summary at session start:
 
@@ -206,6 +209,42 @@ node cli/memory-cli.js summary
 [error] when encountering test failure → Use Bash (90%)
 [tool] when edit functionality is needed → Prefer using Edit tool (80%)
 ```
+
+### Gemini CLI Real-time Extraction
+
+`src/gemini-session-extract.js` enables real-time fact extraction for Gemini CLI:
+
+| Event | Trigger | Action |
+|-------|---------|--------|
+| **SessionEnd** | `/clear`, exit | Extract facts → commit to DB |
+| **PreCompress** | Before context compression | Extract facts → commit to DB |
+
+**Configuration** (`~/.gemini/settings.json`):
+
+```json
+{
+  "hooks": {
+    "SessionEnd": [{
+      "hooks": [{
+        "name": "extract-facts-on-end",
+        "type": "command",
+        "command": "node /path/to/src/gemini-session-extract.js",
+        "timeout": 60000
+      }]
+    }],
+    "PreCompress": [{
+      "hooks": [{
+        "name": "extract-facts-before-compress",
+        "type": "command",
+        "command": "node /path/to/src/gemini-session-extract.js",
+        "timeout": 60000
+      }]
+    }]
+  }
+}
+```
+
+This removes dependency on cron-based sync for Gemini CLI sessions.
 
 ## Instincts
 
@@ -295,6 +334,7 @@ memory-consolidation/
 │   ├── embed.js                 # Gemini embedding utility (zero npm deps)
 │   ├── convert-gemini-sessions.js  # Gemini CLI session converter
 │   ├── query-memory.js          # SessionStart hook script
+│   ├── gemini-session-extract.js # Gemini CLI SessionEnd/PreCompress hook
 │   ├── extract-instincts.js     # Instinct extraction from cases/patterns
 │   └── archive-daily-logs.js    # Log archival utility
 ├── mcp/
@@ -334,6 +374,14 @@ memory-consolidation/
 - `@modelcontextprotocol/sdk`, `zod` (installed via npm in `mcp/`)
 
 ## Changelog
+
+### v2.5.0 (2026-02-25)
+
+- Added **Gemini CLI real-time extraction**: `src/gemini-session-extract.js`
+- SessionEnd hook: extract facts on `/clear` or exit
+- PreCompress hook: extract facts before context compression
+- Auto-finds latest session file as fallback
+- Removes dependency on 6-hour cron for Gemini sessions
 
 ### v2.4.0 (2026-02-25)
 
