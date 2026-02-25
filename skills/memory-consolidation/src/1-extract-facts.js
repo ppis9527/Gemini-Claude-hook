@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { filterConversation, getNoiseStats } = require('./noise-filter.js');
 
 const FACTS_FILE = process.env.FACTS_FILE || path.join(__dirname, 'facts.jsonl');
 const PROCESSED_FILE = path.join(__dirname, '..', '.processed_sessions');
@@ -29,9 +30,20 @@ function markProcessed(sessionId, mtime) {
 
 const PROMPT = `Extract persistent factual information from this conversation as a JSON array.
 Each fact must be an object with "key" (string, dot-notation category.field) and "value" (string).
-Categories (use ONLY these exact singular forms): user, project, task, system, config, preference, location, tool, agent, workflow, team, environment, model, auth, channel, gateway, plugin, binding, command, meta
-NEVER use plural forms (e.g. use "agent" not "agents", "model" not "models", "channel" not "channels").
-Only persistent facts. NOT transient conversation or file contents.
+
+Categories (use ONLY these exact forms):
+- user.* / pref.* - User identity and preferences
+- entity.<name>.* - Entity records (people, projects, organizations)
+- event.<date>.<topic> - Events/decisions (immutable)
+- agent.case.<id> - Learned cases (problem + solution, as JSON object)
+- agent.pattern.<name> - Reusable patterns discovered
+- error.* / correction.* - Errors and corrections
+- project.*, task.*, system.*, config.* - Standard categories
+
+For agent.case.*, use JSON object value: {"problem": "...", "solution": "...", "outcome": "success|failure"}
+For agent.pattern.*, use descriptive string: "Always use pnpm in this project"
+
+NEVER use plural forms. Only persistent facts, NOT transient conversation.
 Output ONLY a raw JSON array. NO markdown fences, NO preamble, NO explanations, NO footer.
 If no facts: []`;
 
@@ -94,7 +106,7 @@ function callGemini(text) {
             GEMINI_SKIP_HOOKS: '1',
             GEMINI_CONFIG_DIR: '/tmp/gemini-null-' + Date.now()
         },
-        timeout: 300_000,
+        timeout: 45_000,  // 45s - must be less than hook timeout (60s)
         maxBuffer: 10 * 1024 * 1024,
     });
 
@@ -166,9 +178,22 @@ function main() {
         return;
     }
 
-    const conversationText = readSessionMessages(inputFile);
-    if (conversationText.trim().length === 0) {
+    const rawConversation = readSessionMessages(inputFile);
+    if (rawConversation.trim().length === 0) {
         console.log('Empty session, skipping.');
+        markProcessed(sessionId, mtime);
+        return;
+    }
+
+    // Apply noise filter to remove low-quality content
+    const conversationText = filterConversation(rawConversation);
+    const reduction = rawConversation.length - conversationText.length;
+    if (reduction > 0) {
+        console.log(`  Noise filtered: ${reduction} chars removed (${Math.round(reduction / rawConversation.length * 100)}%)`);
+    }
+
+    if (conversationText.trim().length === 0) {
+        console.log('All content filtered as noise, skipping.');
         markProcessed(sessionId, mtime);
         return;
     }

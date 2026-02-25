@@ -1,6 +1,23 @@
 {
-  "shown_categories": ["user", "project", "task", "system", "config", "model", "telegram", "agent"],
+  "shown_categories": ["user", "project", "task", "system", "config", "model", "telegram", "agent", "entity", "event"],
   "pinned_keys": ["user.name", "user.language"],
   "min_count_for_l0": 5,
-  "max_categories_in_l0": 15
+  "max_categories_in_l0": 15,
+  "type_mappings": {
+    "fact": ["fact.", "user.", "project.", "system.", "task."],
+    "pref": ["pref.", "config.", "preference."],
+    "entity": ["entity."],
+    "event": ["event."],
+    "agent": ["agent.case.", "agent.pattern."],
+    "inferred": ["inferred."],
+    "error": ["error.", "correction."]
+  },
+  "mergeable_types": ["fact", "pref", "entity"],
+  "immutable_types": ["event", "agent.case"],
+  "dedup": {
+    "enabled": true,
+    "similarity_threshold": 0.85,
+    "max_candidates": 5,
+    "model": "gemini-2.5-flash-lite"
+  }
 }

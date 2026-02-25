@@ -2,12 +2,14 @@
  * Step 3: Commit timed facts to SQLite memory.db.
  *
  * Reads timed_facts.jsonl, upserts into memory.db with deduplication.
- * Reports: N new, N updated, N skipped.
+ * Uses dedupDecision() for semantic dedup before commit.
+ * Reports: N new, N updated, N merged, N skipped.
  */
 
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
+const { dedupDecision } = require('./dedup-decision.js');
 
 const TIMED_FACTS_FILE = process.env.TIMED_FACTS_FILE || path.join(__dirname, 'timed_facts.jsonl');
 const DB_PATH          = process.env.MEMORY_DB_PATH   || path.join(__dirname, '..', 'memory.db');
@@ -45,7 +47,13 @@ function readTimedFacts() {
     return facts;
 }
 
-function commitFacts(db, facts) {
+/**
+ * Commit facts with semantic deduplication.
+ * @param {Database} db - better-sqlite3 instance
+ * @param {Array} facts - array of fact objects
+ * @returns {Promise<Object>} - { newCount, updatedCount, mergedCount, skippedCount }
+ */
+async function commitFacts(db, facts) {
     const findActive = db.prepare(
         'SELECT rowid, key, value, start_time FROM memories WHERE key = ? AND end_time IS NULL'
     );
@@ -65,10 +73,36 @@ function commitFacts(db, facts) {
         'SELECT rowid FROM memories WHERE key = ? AND start_time = ?'
     );
 
-    let newCount = 0, updatedCount = 0, skippedCount = 0;
+    let newCount = 0, updatedCount = 0, mergedCount = 0, skippedCount = 0;
 
     for (const fact of facts) {
         const valStr = typeof fact.value === 'string' ? fact.value : JSON.stringify(fact.value);
+
+        // Run semantic dedup decision
+        const decision = await dedupDecision(fact, db);
+
+        if (decision.action === 'skip') {
+            skippedCount++;
+            continue;
+        }
+
+        if (decision.action === 'merge' && decision.target) {
+            // Merge: update the target key's value
+            const targetRow = findActive.get(decision.target);
+            if (targetRow) {
+                // Deactivate old, insert merged value under target key
+                ftsDelete.run(targetRow.rowid, targetRow.key, targetRow.value);
+                deactivate.run(fact.start_time, targetRow.key, targetRow.start_time);
+                insert.run(decision.target, valStr, fact.source, fact.start_time, fact.end_time ?? null);
+                const newRow = getRowid.get(decision.target, fact.start_time);
+                if (newRow) ftsInsert.run(newRow.rowid, decision.target, valStr);
+                mergedCount++;
+                continue;
+            }
+            // If target not found, fall through to create
+        }
+
+        // action === 'create' (or merge fallback)
         const activeRow = findActive.get(fact.key);
 
         if (activeRow) {
@@ -95,10 +129,10 @@ function commitFacts(db, facts) {
         }
     }
 
-    return { newCount, updatedCount, skippedCount };
+    return { newCount, updatedCount, mergedCount, skippedCount };
 }
 
-function main() {
+async function main() {
     const facts = readTimedFacts();
     if (facts.length === 0) {
         console.log('No timed facts to commit.');
@@ -108,10 +142,20 @@ function main() {
     const db = new Database(DB_PATH);
     ensureTable(db);
 
-    const result = db.transaction(() => commitFacts(db, facts))();
-    db.close();
+    // commitFacts is async (due to dedupDecision), so we can't use db.transaction() directly
+    // Instead, we wrap the async call and handle transactions manually
+    try {
+        db.exec('BEGIN TRANSACTION');
+        const result = await commitFacts(db, facts);
+        db.exec('COMMIT');
 
-    console.log(`Committed: ${result.newCount} new, ${result.updatedCount} updated, ${result.skippedCount} skipped.`);
+        console.log(`Committed: ${result.newCount} new, ${result.updatedCount} updated, ${result.mergedCount} merged, ${result.skippedCount} skipped.`);
+    } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+    } finally {
+        db.close();
+    }
 }
 
 function rebuildFts(dbOrPath) {
@@ -134,5 +178,8 @@ module.exports = { ensureTable, commitFacts, rebuildFts };
 
 // Run if executed directly
 if (require.main === module) {
-    main();
+    main().catch(err => {
+        console.error('Error:', err.message);
+        process.exit(1);
+    });
 }

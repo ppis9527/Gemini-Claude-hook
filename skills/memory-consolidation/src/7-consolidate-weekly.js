@@ -145,6 +145,10 @@ function generateTopicMarkdown(category, facts, weekLabel, dateRange) {
         lines.push('');
     }
 
+    // Add hashtags
+    lines.push('---');
+    lines.push(`#openclaw #weekly-topics #${weekLabel} #${category}`);
+
     return lines.join('\n');
 }
 
@@ -187,6 +191,11 @@ function generateSummaryMarkdown(weekLabel, dateRange, groups) {
         }
         lines.push('');
     }
+
+    // Add hashtags
+    const categoryTags = Object.keys(groups).slice(0, 5).map(c => `#${c}`).join(' ');
+    lines.push('---');
+    lines.push(`#openclaw #weekly-summary #${weekLabel} ${categoryTags}`);
 
     return lines.join('\n');
 }

@@ -174,6 +174,10 @@ function generateRollingTopicMarkdown(category, facts, dateRange) {
         lines.push('');
     }
 
+    // Add hashtags
+    lines.push('---');
+    lines.push(`#openclaw #rolling-topic #${category} #memory`);
+
     return lines.join('\n');
 }
 
@@ -227,6 +231,11 @@ function generateIndexMarkdown(groups, dateRange) {
         lines.push('_No weekly snapshots yet._');
     }
     lines.push('');
+
+    // Add hashtags
+    const categoryTags = Object.keys(groups).slice(0, 5).map(c => `#${c}`).join(' ');
+    lines.push('---');
+    lines.push(`#openclaw #memory-index #topics ${categoryTags}`);
 
     return lines.join('\n');
 }

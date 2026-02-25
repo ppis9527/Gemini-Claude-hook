@@ -100,7 +100,7 @@ Runs every 6 hours via `periodic-memory-sync.sh` and `daily-gemini-sync.sh`.
 
 | Step | Script | Description | Tokens |
 |---|---|---|---|
-| 1 | `src/1-extract-facts.js` | Extract facts from session JSONL via Gemini 2.5-flash-lite | ~500 |
+| 1 | `src/1-extract-facts.js` | Extract facts from session JSONL via Gemini 2.5-flash-lite (with noise filter) | ~500 |
 | 2 | `src/2-align-temporally.js` | Temporal alignment, dedup same key+value | 0 |
 | 3 | `src/3-commit-to-db.js` | SQLite upsert with start_time/end_time lifecycle | 0 |
 | 4 | `src/4-generate-digest.js` | Generate memory_digest.json | 0 |
@@ -190,12 +190,37 @@ node cli/memory-cli.js search --prefix|--query|--semantic|--key <value>
 node cli/memory-cli.js summary
 ```
 
-## Semantic Search
+## Hybrid Search (Vector + BM25)
+
+The MCP server uses **hybrid search** combining semantic vectors and keyword matching:
+
+| Method | Finds | Example |
+|--------|-------|---------|
+| **Vector** | Semantically similar | Search "editor" → finds "VSCode", "IDE" |
+| **BM25 (FTS5)** | Exact keywords | Search "GOG_KEYRING_PASSWORD" → exact match |
+
+Results are merged with weighted scoring + BM25 bonus when both methods agree.
+
+### Configuration
 
 - **Model:** Gemini `embedding-001` (3072 dimensions)
 - **Storage:** BLOB column in SQLite (12,288 bytes per fact)
-- **Query:** Cosine similarity at runtime, threshold >= 0.3
+- **Vector threshold:** Cosine similarity >= 0.3
+- **Fusion:** 70% vector + 30% BM25, +15% bonus for dual matches
 - **Auth:** Vertex AI (`gcloud` token, no TPM limit) > API key (env/Secret Manager fallback)
+
+## Noise Filter
+
+Before LLM extraction, conversations are filtered to remove low-quality content:
+
+| Category | Examples | Reason |
+|----------|----------|--------|
+| **Boilerplate** | "hi", "ok", "thanks" | No factual content |
+| **Agent denials** | "I don't have data", "I don't recall" | No information |
+| **Meta-questions** | "Do you remember?", "Did I mention?" | Questions about memory |
+| **System output** | Pure JSON, log prefixes | Tool output, not facts |
+
+This reduces LLM tokens by ~30-50% while preserving meaningful content.
 
 ## Hooks
 
@@ -332,6 +357,8 @@ memory-consolidation/
 │   ├── periodic-memory-sync.sh  # 6h cron (OpenClaw sessions)
 │   ├── daily-gemini-sync.sh     # 6h cron (Gemini CLI sessions)
 │   ├── embed.js                 # Gemini embedding utility (zero npm deps)
+│   ├── noise-filter.js          # Noise filter (boilerplate, denials, meta-questions)
+│   ├── hybrid-search.js         # Hybrid search (Vector + BM25)
 │   ├── convert-gemini-sessions.js  # Gemini CLI session converter
 │   ├── query-memory.js          # SessionStart hook script
 │   ├── gemini-session-extract.js # Gemini CLI SessionEnd/PreCompress hook
@@ -374,6 +401,18 @@ memory-consolidation/
 - `@modelcontextprotocol/sdk`, `zod` (installed via npm in `mcp/`)
 
 ## Changelog
+
+### v2.6.0 (2026-02-25)
+
+- Added **Noise Filter**: `src/noise-filter.js`
+  - Filters boilerplate (hi, ok, thanks), agent denials, meta-questions
+  - Integrated into `1-extract-facts.js` before LLM call
+  - Reduces LLM tokens by ~30-50%
+- Added **Hybrid Search**: `src/hybrid-search.js`
+  - Combines vector similarity + BM25 (FTS5)
+  - Better exact keyword matching (variable names, API keys)
+  - Weighted score fusion with BM25 bonus
+  - Integrated into MCP server `memory_search`
 
 ### v2.5.0 (2026-02-25)
 
