@@ -105,7 +105,7 @@ function callGemini(text) {
             GEMINI_SKIP_HOOKS: '1',
             GEMINI_CONFIG_DIR: '/tmp/gemini-null-' + Date.now()
         },
-        timeout: 300_000,
+        timeout: 45_000,  // 45s - must be less than hook timeout (60s)
         maxBuffer: 10 * 1024 * 1024,
     });
 
