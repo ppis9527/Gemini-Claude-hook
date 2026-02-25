@@ -30,9 +30,13 @@ const DISK_WARNING = 75;
 const DISK_CRITICAL = 90;
 const MEMORY_WARNING = 80;
 
+// Ensure PATH includes nvm node for cron environment
+const NVM_BIN = '/home/jerryyrliu/.nvm/versions/node/v24.13.0/bin';
+const EXEC_ENV = { ...process.env, PATH: `${NVM_BIN}:${process.env.PATH}` };
+
 function exec(cmd) {
     try {
-        return execSync(cmd, { encoding: 'utf8', timeout: 30000 }).trim();
+        return execSync(cmd, { encoding: 'utf8', timeout: 30000, env: EXEC_ENV }).trim();
     } catch (e) {
         return null;
     }
