@@ -1,0 +1,34 @@
+{
+  "learning": {
+    "localDir": "reports/learning",
+    "gdriveFolderId": "1P8Sza6c5DxZ4sWYioYW24CcfZ_R1s9h2"
+  },
+  "decisions": {
+    "localDir": "reports/decisions",
+    "gdriveFolderId": "1kGbGb-OX_7Spms6dbRoSfYxL5AdImahK"
+  },
+  "observations": {
+    "localDir": "reports/observations",
+    "gdriveFolderId": "1rQoOFRBngYCElmLFxG4mjD5KyO53uBlU"
+  },
+  "daily-digest": {
+    "localDir": "reports/daily-digest",
+    "gdriveFolderId": "1TFO2BI7HcZorHxze3PtaX5pJIfYWkIOW"
+  },
+  "system-health": {
+    "localDir": "reports/system-health",
+    "gdriveFolderId": "103KLvYwFVcVCYYEeDyRsuT39nDj5ct8E"
+  },
+  "weekly-topics": {
+    "localDir": "topics",
+    "gdriveFolderId": "1YD9gcsjespruhqli5Sk-DdRYne9TDrNu"
+  },
+  "github-weekly": {
+    "localDir": "reports/github_weekly",
+    "gdriveFolderId": "1W6HmBBRL9u7HdBNOHnI_HebVwtatvMu_"
+  },
+  "skill-usage": {
+    "localDir": "reports/usage",
+    "gdriveFolderId": "1PAsTZMFRoc2c58pCyuf4i_dBlF6GAsBl"
+  }
+}
