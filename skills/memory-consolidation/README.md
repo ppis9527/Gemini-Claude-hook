@@ -7,26 +7,32 @@ Built for [OpenClaw](https://openclaw.ai/), also works with Claude Code and Gemi
 ## Architecture
 
 ```
-                          ┌──────────────────────────────┐
-                          │       Session Sources         │
-                          │  OpenClaw JSONL  │ Gemini JSON│
-                          └────────┬─────────┬───────────┘
-                                   │         │
-                          ┌────────▼─────────▼───────────┐
-                          │      Pipeline (8 steps)       │
-                          │                               │
-                          │  1. Extract facts (Gemini LLM)│
-                          │  2. Temporal alignment        │
-                          │  3. Commit to SQLite          │
-                          │  4. Generate digest           │
-                          │  5. Embed (Gemini embedding)  │
-                          │  6. Generate daily log        │
-                          │  7. Weekly snapshot           │
-                          │  8. Rolling topic files       │
-                          └────────────┬──────────────────┘
-                                       │
-                    ┌──────────────────┼──────────────────┐
-                    ▼                  ▼                  ▼
+                    ┌─────────────────────────────────────────┐
+                    │            Session Sources               │
+                    │  Claude Code  │  Gemini CLI  │  OpenClaw │
+                    │    JSONL      │    JSON      │   JSONL   │
+                    └───────┬───────────┬──────────────┬──────┘
+                            │           │              │
+                    ┌───────▼───────────▼──────────────▼──────┐
+                    │          Noise Filter                    │
+                    │  (boilerplate, denials, meta-questions)  │
+                    └───────────────────┬─────────────────────┘
+                                        │
+                    ┌───────────────────▼─────────────────────┐
+                    │          Pipeline (8 steps)              │
+                    │                                          │
+                    │  1. Extract facts (Gemini LLM)           │
+                    │  2. Temporal alignment                   │
+                    │  3. Commit to SQLite                     │
+                    │  4. Generate digest                      │
+                    │  5. Embed (Gemini embedding)             │
+                    │  6. Generate daily log                   │
+                    │  7. Weekly snapshot                      │
+                    │  8. Rolling topic files                  │
+                    └───────────────────┬─────────────────────┘
+                                        │
+                    ┌───────────────────┼───────────────────┐
+                    ▼                   ▼                   ▼
            ┌─────────────────┐  ┌────────────┐  ┌─────────────────┐
            │   memory.db      │  │   logs/     │  │    topics/       │
            │  SQLite + FTS5   │  │ YYYY-MM-DD  │  │ <category>.md    │
@@ -34,9 +40,9 @@ Built for [OpenClaw](https://openclaw.ai/), also works with Claude Code and Gemi
            └──┬──────┬──────┬─┘  └────────────┘  └─────────────────┘
               │      │      │
  ┌────────────▼┐  ┌──▼───┐  ┌▼────────────┐
- │  MCP Server  │  │ CLI  │  │ Hook inject │
- │ (Claude Code │  │(Open │  │(SessionStart│
- │  Gemini CLI) │  │ Claw)│  │  summary)   │
+ │ Hybrid Search│  │ CLI  │  │ Hook inject │
+ │ (Vector+BM25)│  │      │  │(SessionStart│
+ │  MCP Server  │  │      │  │  summary)   │
  └──────────────┘  └──────┘  └─────────────┘
 ```
 
