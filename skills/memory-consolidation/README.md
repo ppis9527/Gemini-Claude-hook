@@ -23,7 +23,7 @@ Built for [OpenClaw](https://openclaw.ai/), also works with Claude Code and Gemi
                     │                                          │
                     │  1. Extract facts (Gemini LLM)           │
                     │  2. Temporal alignment                   │
-                    │  3. Commit to SQLite                     │
+                    │  3. Commit + LLM dedup (skip/merge/new)  │
                     │  4. Generate digest                      │
                     │  5. Embed (Gemini embedding)             │
                     │  6. Generate daily log                   │
