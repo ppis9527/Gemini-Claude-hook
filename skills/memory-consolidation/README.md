@@ -7,43 +7,46 @@ Built for [OpenClaw](https://openclaw.ai/), also works with Claude Code and Gemi
 ## Architecture
 
 ```
-                    ┌─────────────────────────────────────────┐
-                    │            Session Sources               │
-                    │  Claude Code  │  Gemini CLI  │  OpenClaw │
-                    │    JSONL      │    JSON      │   JSONL   │
-                    └───────┬───────────┬──────────────┬──────┘
-                            │           │              │
-                    ┌───────▼───────────▼──────────────▼──────┐
-                    │          Noise Filter                    │
-                    │  (boilerplate, denials, meta-questions)  │
-                    └───────────────────┬─────────────────────┘
-                                        │
-                    ┌───────────────────▼─────────────────────┐
-                    │          Pipeline (8 steps)              │
-                    │                                          │
-                    │  1. Extract facts (Gemini LLM)           │
-                    │  2. Temporal alignment                   │
-                    │  3. Commit + LLM dedup (skip/merge/new)  │
-                    │  4. Generate digest                      │
-                    │  5. Embed (Gemini embedding)             │
-                    │  6. Generate daily log                   │
-                    │  7. Weekly snapshot                      │
-                    │  8. Rolling topic files                  │
-                    └───────────────────┬─────────────────────┘
-                                        │
-                    ┌───────────────────┼───────────────────┐
-                    ▼                   ▼                   ▼
-           ┌─────────────────┐  ┌────────────┐  ┌─────────────────┐
-           │   memory.db      │  │   logs/     │  │    topics/       │
-           │  SQLite + FTS5   │  │ YYYY-MM-DD  │  │ <category>.md    │
-           │  + embeddings    │  │    .md      │  │ YYYY-Www-*.md    │
-           └──┬──────┬──────┬─┘  └────────────┘  └─────────────────┘
-              │      │      │
- ┌────────────▼┐  ┌──▼───┐  ┌▼────────────┐
- │ Hybrid Search│  │ CLI  │  │ Hook inject │
- │ (Vector+BM25)│  │      │  │(SessionStart│
- │  MCP Server  │  │      │  │  summary)   │
- └──────────────┘  └──────┘  └─────────────┘
+                         ┌─────────────────────────────────────────┐
+                         │            Session Sources               │
+                         │  Claude Code  │  Gemini CLI  │  OpenClaw │
+                         │    JSONL      │    JSON      │   JSONL   │
+                         └───────┬───────────┬──────────────┬──────┘
+                                 │           │              │
+        ┌────────────────────────┼───────────┼──────────────┼────────────────────────┐
+        │                        │           │              │                        │
+        ▼                        ▼           ▼              ▼                        ▼
+┌───────────────────┐    ┌──────────────────────────────────────────┐    ┌───────────────────┐
+│ Observation System │    │              Noise Filter                 │    │   Tool Hooks      │
+│  (real-time)       │    │  (boilerplate, denials, meta-questions)  │    │ PreToolUse/Post   │
+│                    │    └───────────────────┬──────────────────────┘    │                   │
+│ observe.sh         │                        │                           │ observe.sh        │
+│      ↓             │    ┌───────────────────▼──────────────────────┐    │      ↓            │
+│ observations.jsonl │    │          Pipeline (8 steps)               │    │ observations.jsonl│
+│      ↓             │    │                                           │    └─────────┬─────────┘
+│ analyze-obs.js     │    │  1. Extract facts (Gemini LLM)            │              │
+│      ↓             │    │  2. Temporal alignment                    │              │
+│ extract-learnings  │    │  3. Commit + LLM dedup (skip/merge/new)   │              │
+│      ↓             │    │  4. Generate digest                       │              │
+│ agent.case.*       │    │  5. Embed (Gemini embedding)              │              │
+│ agent.pattern.*    │    │  6. Generate daily log                    │              │
+│      ↓             │    │  7. Weekly snapshot                       │              │
+│ (cron: 6h)         │    │  8. Rolling topic files                   │              │
+│ extract-instincts  │    └───────────────────┬───────────────────────┘              │
+│      ↓             │                        │                                      │
+│ agent.instinct.*   │    ┌───────────────────┼───────────────────┐                  │
+└─────────┬──────────┘    ▼                   ▼                   ▼                  │
+          │      ┌─────────────────┐  ┌────────────┐  ┌─────────────────┐            │
+          │      │   memory.db      │  │   logs/     │  │    topics/       │          │
+          └─────►│  SQLite + FTS5   │  │ YYYY-MM-DD  │  │ <category>.md    │◄─────────┘
+                 │  + embeddings    │  │    .md      │  │ YYYY-Www-*.md    │
+                 └──┬──────┬──────┬─┘  └────────────┘  └─────────────────┘
+                    │      │      │
+       ┌────────────▼┐  ┌──▼───┐  ┌▼────────────┐
+       │ Hybrid Search│  │ CLI  │  │ Hook inject │
+       │ (Vector+BM25)│  │      │  │(SessionStart│
+       │  MCP Server  │  │      │  │  summary)   │
+       └──────────────┘  └──────┘  └─────────────┘
 ```
 
 ## Components
