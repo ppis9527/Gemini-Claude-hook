@@ -17,6 +17,9 @@ const { embedTexts, cosineSimilarity } = require(
 const { applyVerdict } = require(
   path.join(__dirname, "..", "src", "verdict.js")
 );
+const { hybridSearch } = require(
+  path.join(__dirname, "..", "src", "hybrid-search.js")
+);
 const DB_PATH = path.join(__dirname, "..", "memory.db");
 const DIGEST_PATH = path.join(__dirname, "..", "memory_digest.json");
 const CONFIG_PATH = path.join(__dirname, "..", "digest-config.json");
@@ -119,29 +122,16 @@ server.registerTool(
         )
         .all(...keys, maxRows);
     } else if (semantic) {
-      // Semantic search: embed query, cosine similarity against all embedded facts
+      // Hybrid search: combine vector similarity + BM25 (FTS5)
       const [queryEmb] = await embedTexts([semantic]);
-      const allRows = db
-        .prepare(
-          `SELECT key, value, start_time, embedding FROM memories
-           WHERE embedding IS NOT NULL AND end_time IS NULL`
-        )
-        .all();
-
-      const scored = [];
-      for (const r of allRows) {
-        const emb = new Float32Array(
-          r.embedding.buffer,
-          r.embedding.byteOffset,
-          r.embedding.byteLength / 4
-        );
-        const sim = cosineSimilarity(queryEmb, emb);
-        if (sim >= 0.3) {
-          scored.push({ key: r.key, value: r.value, start_time: r.start_time, similarity: sim });
-        }
-      }
-      scored.sort((a, b) => b.similarity - a.similarity);
-      rows = scored.slice(0, maxRows);
+      const hybridResults = hybridSearch(db, semantic, queryEmb, { limit: maxRows });
+      rows = hybridResults.map(r => ({
+        key: r.key,
+        value: r.value,
+        start_time: r.start_time,
+        similarity: r.score,
+        bm25Hit: r.bm25Hit,
+      }));
     } else if (query) {
       // Quote each token to prevent FTS5 syntax errors (e.g. "-" as NOT operator)
       const safeQuery = query
@@ -201,11 +191,13 @@ server.registerTool(
     }
 
     const text = rows
-      .map((r) =>
-        r.similarity !== undefined
-          ? `${r.key}: ${r.value} (similarity: ${r.similarity.toFixed(3)})`
-          : `${r.key}: ${r.value}`
-      )
+      .map((r) => {
+        if (r.similarity !== undefined) {
+          const bm25Tag = r.bm25Hit ? " +bm25" : "";
+          return `${r.key}: ${r.value} (score: ${r.similarity.toFixed(3)}${bm25Tag})`;
+        }
+        return `${r.key}: ${r.value}`;
+      })
       .join("\n");
     return { content: [{ type: "text", text }] };
   }

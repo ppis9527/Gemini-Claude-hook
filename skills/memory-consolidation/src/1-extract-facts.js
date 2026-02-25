@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { filterConversation, getNoiseStats } = require('./noise-filter.js');
 
 const FACTS_FILE = process.env.FACTS_FILE || path.join(__dirname, 'facts.jsonl');
 const PROCESSED_FILE = path.join(__dirname, '..', '.processed_sessions');
@@ -177,9 +178,22 @@ function main() {
         return;
     }
 
-    const conversationText = readSessionMessages(inputFile);
-    if (conversationText.trim().length === 0) {
+    const rawConversation = readSessionMessages(inputFile);
+    if (rawConversation.trim().length === 0) {
         console.log('Empty session, skipping.');
+        markProcessed(sessionId, mtime);
+        return;
+    }
+
+    // Apply noise filter to remove low-quality content
+    const conversationText = filterConversation(rawConversation);
+    const reduction = rawConversation.length - conversationText.length;
+    if (reduction > 0) {
+        console.log(`  Noise filtered: ${reduction} chars removed (${Math.round(reduction / rawConversation.length * 100)}%)`);
+    }
+
+    if (conversationText.trim().length === 0) {
+        console.log('All content filtered as noise, skipping.');
         markProcessed(sessionId, mtime);
         return;
     }
