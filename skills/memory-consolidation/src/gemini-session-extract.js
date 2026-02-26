@@ -19,6 +19,9 @@ const MEMORY_ROOT = path.join(os.homedir(), '.openclaw/workspace/skills/memory-c
 const SRC_DIR = path.join(MEMORY_ROOT, 'src');
 const GEMINI_BASE = path.join(os.homedir(), '.gemini', 'tmp');
 const TIMEOUT = 60000;
+const LOCK_FILE = '/tmp/gemini-session-extract.lock';
+const STALE_LOCK_MS = 5 * 60 * 1000; // 5 minutes
+const MIN_FREE_MB = 500;
 
 // Read stdin (Gemini CLI may pass session info)
 let stdinData = '';
@@ -32,11 +35,46 @@ process.stdin.on('data', chunk => {
 });
 
 process.stdin.on('end', () => {
+    // Lock check — prevent concurrent extractions (fork storm)
+    if (isLocked()) {
+        console.error('[GeminiExtract] Another extraction in progress, skipping');
+        process.exit(0);
+    }
+
+    // RAM check
+    const freeMB = os.freemem() / (1024 * 1024);
+    if (freeMB < MIN_FREE_MB) {
+        console.error(`[GeminiExtract] Low RAM (${freeMB.toFixed(0)}MB free), skipping`);
+        process.exit(0);
+    }
+
+    // Acquire lock
+    try {
+        fs.writeFileSync(LOCK_FILE, JSON.stringify({ pid: process.pid, timestamp: Date.now() }));
+    } catch {}
+
     main().catch(err => {
         console.error('[GeminiExtract] Error:', err.message);
-        process.exit(0); // Don't block on error
+    }).finally(() => {
+        try { fs.unlinkSync(LOCK_FILE); } catch {}
+        process.exit(0);
     });
 });
+
+function isLocked() {
+    if (!fs.existsSync(LOCK_FILE)) return false;
+    try {
+        const lock = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8'));
+        if (Date.now() - lock.timestamp > STALE_LOCK_MS) {
+            fs.unlinkSync(LOCK_FILE);
+            return false;
+        }
+        try { process.kill(lock.pid, 0); return true; } catch { fs.unlinkSync(LOCK_FILE); return false; }
+    } catch {
+        try { fs.unlinkSync(LOCK_FILE); } catch {}
+        return false;
+    }
+}
 
 /**
  * Find the most recently modified Gemini session file
@@ -106,14 +144,40 @@ function convertToJsonl(sessionPath) {
     return lines.length > 0 ? lines.join('\n') + '\n' : null;
 }
 
+/**
+ * Process staged snapshots from PreCompress hook.
+ * These are copies of session JSONs saved before compression.
+ */
+async function processStagedSnapshots() {
+    const STAGING_DIR = path.join(os.homedir(), '.openclaw/workspace/skills/memory-consolidation/staging');
+    if (!fs.existsSync(STAGING_DIR)) return;
+
+    const files = fs.readdirSync(STAGING_DIR).filter(f => f.startsWith('precompress-') && f.endsWith('.json'));
+    if (files.length === 0) return;
+
+    console.error(`[GeminiExtract] Found ${files.length} staged snapshot(s)`);
+    for (const file of files) {
+        const filePath = path.join(STAGING_DIR, file);
+        try {
+            await processSessionFile(filePath);
+            fs.unlinkSync(filePath); // Clean up after processing
+            console.error(`[GeminiExtract] Processed staged: ${file}`);
+        } catch (err) {
+            console.error(`[GeminiExtract] Failed staged ${file}: ${err.message}`);
+        }
+    }
+}
+
 async function main() {
-    // Try to get session path from stdin
+    // First, process any staged snapshots from PreCompress
+    await processStagedSnapshots();
+
+    // Then process the current session
     let sessionPath = null;
 
     try {
         if (stdinData.trim()) {
             const input = JSON.parse(stdinData);
-            // Gemini CLI might pass session_path or similar
             sessionPath = input.session_path || input.sessionPath || input.path;
         }
     } catch {
@@ -137,6 +201,14 @@ async function main() {
         process.exit(0);
     }
 
+    await processSessionFile(sessionPath);
+    process.exit(0);
+}
+
+/**
+ * Process a single session file: extract facts, align, commit, learn.
+ */
+async function processSessionFile(sessionPath) {
     const sessionId = path.basename(sessionPath, '.json').slice(0, 20);
     console.error(`[GeminiExtract] Processing session: ${sessionId}`);
 
@@ -144,7 +216,7 @@ async function main() {
     const jsonlContent = convertToJsonl(sessionPath);
     if (!jsonlContent) {
         console.error('[GeminiExtract] No messages to extract');
-        process.exit(0);
+        return;
     }
 
     // Write temp JSONL file
@@ -165,7 +237,7 @@ async function main() {
 
         if (extractResult.status !== 0) {
             console.error('[GeminiExtract] Extract failed:', extractResult.stderr?.slice(0, 200));
-            process.exit(0);
+            return;
         }
 
         // Write facts to temp file
@@ -226,6 +298,4 @@ async function main() {
     } finally {
         try { fs.unlinkSync(tempJsonl); } catch {}
     }
-
-    process.exit(0);
 }
