@@ -101,11 +101,7 @@ function callGemini(text) {
     const result = spawnSync('gemini', ['-p', PROMPT, '-m', 'gemini-2.5-flash-lite'], {
         input: text,
         encoding: 'utf8',
-        env: { 
-            ...process.env, 
-            GEMINI_SKIP_HOOKS: '1',
-            GEMINI_CONFIG_DIR: '/tmp/gemini-null-' + Date.now()
-        },
+        env: { ...process.env, GEMINI_SKIP_HOOKS: '1' },
         timeout: 45_000,  // 45s - must be less than hook timeout (60s)
         maxBuffer: 10 * 1024 * 1024,
     });
@@ -226,6 +222,52 @@ function main() {
     fs.appendFileSync(FACTS_FILE, lines.join('\n') + '\n');
     markProcessed(sessionId, mtime);
     console.log(`Extracted ${allFacts.length} facts → ${FACTS_FILE}`);
+
+    // Clean up garbage sessions created by gemini -p
+    cleanGeminiSessions();
+}
+
+/**
+ * Delete fake sessions (created by gemini -p) and sessions older than 7 days.
+ */
+function cleanGeminiSessions() {
+    const GEMINI_TMP = path.join(os.homedir(), '.gemini', 'tmp');
+    if (!fs.existsSync(GEMINI_TMP)) return;
+
+    const EXTRACT_MARKER = 'Extract persistent factual information';
+    const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    let deleted = 0;
+
+    for (const dir of fs.readdirSync(GEMINI_TMP)) {
+        const chats = path.join(GEMINI_TMP, dir, 'chats');
+        if (!fs.existsSync(chats)) continue;
+        try { if (!fs.statSync(chats).isDirectory()) continue; } catch { continue; }
+
+        for (const f of fs.readdirSync(chats)) {
+            if (!f.endsWith('.json')) continue;
+            const fp = path.join(chats, f);
+            try {
+                const stat = fs.statSync(fp);
+
+                // Delete if older than 7 days
+                if (now - stat.mtimeMs > MAX_AGE_MS) {
+                    fs.unlinkSync(fp);
+                    deleted++;
+                    continue;
+                }
+
+                // Delete if contains extraction prompt (fake session from gemini -p)
+                const content = fs.readFileSync(fp, 'utf8', { flag: 'r' });
+                if (content.includes(EXTRACT_MARKER)) {
+                    fs.unlinkSync(fp);
+                    deleted++;
+                }
+            } catch {}
+        }
+    }
+
+    if (deleted > 0) console.log(`  Cleaned ${deleted} garbage/old session(s)`);
 }
 
 main();
