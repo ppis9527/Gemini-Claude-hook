@@ -60,6 +60,7 @@ Built for [OpenClaw](https://openclaw.ai/), also works with Claude Code and Gemi
 | **Instinct CLI** | `cli/instinct-cli.js` | Manage learned behavioral rules (instincts) |
 | **Hook** | `src/query-memory.js` | SessionStart hook that injects memory summary + instincts |
 | **Gemini Extract** | `src/gemini-session-extract.js` | SessionEnd/PreCompress hook for real-time Gemini fact extraction |
+| **Token Monitor** | `hooks/gemini/token-monitor.js` | AfterModel hook — proactive extraction at 65% context usage |
 
 ## Quick Start
 
@@ -251,7 +252,7 @@ This reduces LLM tokens by ~30-50% while preserving meaningful content.
 | Event | Trigger | Action |
 |-------|---------|--------|
 | **SessionEnd** | `/clear`, exit | Extract facts → commit to DB |
-| **PreCompress** | Before context compression | Extract facts → commit to DB |
+| **PreCompress** | Before context compression | Snapshot session JSON |
 
 **Configuration** (`~/.gemini/settings.json`):
 
@@ -268,10 +269,10 @@ This reduces LLM tokens by ~30-50% while preserving meaningful content.
     }],
     "PreCompress": [{
       "hooks": [{
-        "name": "extract-facts-before-compress",
+        "name": "snapshot-before-compress",
         "type": "command",
-        "command": "node /path/to/src/gemini-session-extract.js",
-        "timeout": 60000
+        "command": "node /path/to/src/gemini-precompress-snapshot.js",
+        "timeout": 5000
       }]
     }]
   }
@@ -279,6 +280,44 @@ This reduces LLM tokens by ~30-50% while preserving meaningful content.
 ```
 
 This removes dependency on cron-based sync for Gemini CLI sessions.
+
+### Token Monitor (AfterModel Hook)
+
+Proactive memory retention: monitors `promptTokenCount` after each LLM response and triggers background extraction before context fills up.
+
+```
+AfterModel event → promptTokenCount > 65% of 128K
+  → RAM ≥ 500MB? → Lock available?
+  → Snapshot session → Fork detached worker
+  → Worker: extract facts → commit to DB → update GEMINI.md
+```
+
+**Anti-OOM design (3 layers):**
+
+| Layer | Mechanism | Description |
+|-------|-----------|-------------|
+| 1 | RAM check | `os.freemem() >= 500MB` before fork + at worker startup |
+| 2 | Lock file | `/tmp/gemini-extract.lock` (PID + timestamp, stale >10 min) |
+| 3 | Heap cap | `--max-old-space-size=200` on child `1-extract-facts.js` |
+
+**Configuration** (`~/.gemini/settings.json`):
+
+```json
+{
+  "hooks": {
+    "AfterModel": [{
+      "hooks": [{
+        "name": "token-monitor",
+        "type": "command",
+        "command": "node ~/.gemini/hooks/token-monitor.js",
+        "timeout": 3000
+      }]
+    }]
+  }
+}
+```
+
+The worker writes a `## Session Context` section to `GEMINI.md` with extracted facts, which survives compression.
 
 ## Instincts
 
@@ -372,7 +411,12 @@ memory-consolidation/
 │   ├── query-memory.js          # SessionStart hook script
 │   ├── gemini-session-extract.js # Gemini CLI SessionEnd/PreCompress hook
 │   ├── extract-instincts.js     # Instinct extraction from cases/patterns
+│   ├── gemini-precompress-snapshot.js # PreCompress snapshot (lightweight)
 │   └── archive-daily-logs.js    # Log archival utility
+├── hooks/
+│   └── gemini/
+│       ├── token-monitor.js          # AfterModel hook (threshold + fork)
+│       └── token-monitor-worker.js   # Background extraction worker
 ├── mcp/
 │   ├── server.mjs               # MCP server (stdio transport)
 │   └── package.json
@@ -410,6 +454,18 @@ memory-consolidation/
 - `@modelcontextprotocol/sdk`, `zod` (installed via npm in `mcp/`)
 
 ## Changelog
+
+### v2.7.0 (2026-02-27)
+
+- Added **Token Monitor**: `hooks/gemini/token-monitor.js` + `token-monitor-worker.js`
+  - AfterModel hook that monitors `promptTokenCount` (65% of 128K threshold)
+  - Forks detached background worker for non-blocking extraction
+  - 3-layer anti-OOM: RAM check (500MB min), lock file (singleton), Node heap cap
+  - Worker writes `## Session Context` to `GEMINI.md` (survives compression)
+  - Reads new facts from `facts.jsonl` via file offset (not stdout)
+- Added **PreCompress snapshot hook**: `src/gemini-precompress-snapshot.js`
+  - Lightweight snapshot-only (< 100ms), no background extraction
+  - Replaces previous OOM-prone PreCompress extraction approach
 
 ### v2.6.0 (2026-02-25)
 
