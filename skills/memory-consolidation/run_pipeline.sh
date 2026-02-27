@@ -16,8 +16,24 @@ TIMED_FACTS_FILE="$SRC_DIR/timed_facts.jsonl"
 export FACTS_FILE
 export TIMED_FACTS_FILE
 
+# Anti-OOM: cap sessions per run and check RAM before each extraction
+MAX_SESSIONS_PER_RUN=${MAX_SESSIONS_PER_RUN:-50}
+MIN_FREE_MB=300
+
+check_ram() {
+    local free_kb
+    free_kb=$(awk '/MemAvailable/{print $2}' /proc/meminfo)
+    local free_mb=$((free_kb / 1024))
+    if [ "$free_mb" -lt "$MIN_FREE_MB" ]; then
+        echo "  ⚠ Low RAM: ${free_mb}MB free (min ${MIN_FREE_MB}MB). Stopping early."
+        return 1
+    fi
+    return 0
+}
+
 run_extraction_for_file() {
     local input_file="$1"
+    check_ram || return 1
     echo "  Extracting: $input_file"
     node "$SRC_DIR/1-extract-facts.js" "$input_file"
 }
@@ -48,9 +64,18 @@ if [ "${1:-}" = "--gemini" ]; then
         exit 0
     fi
 
-    echo "Step 1: Extracting facts from ${#FILES[@]} converted sessions..."
+    TOTAL=${#FILES[@]}
+    if [ "$TOTAL" -gt "$MAX_SESSIONS_PER_RUN" ]; then
+        echo "⚠ Capping at $MAX_SESSIONS_PER_RUN sessions (${TOTAL} available). Remaining will be processed next run."
+        TOTAL=$MAX_SESSIONS_PER_RUN
+    fi
+
+    echo "Step 1: Extracting facts from ${TOTAL} converted sessions..."
+    COUNT=0
     for f in $(printf '%s\n' "${FILES[@]}" | sort); do
-        run_extraction_for_file "$f"
+        COUNT=$((COUNT + 1))
+        [ "$COUNT" -gt "$MAX_SESSIONS_PER_RUN" ] && break
+        run_extraction_for_file "$f" || { echo "  Extraction stopped (RAM/error)."; break; }
         run_agent_learnings_for_file "$f"
     done
 
@@ -79,7 +104,7 @@ elif [ "${1:-}" = "--backfill" ]; then
 
     echo "Step 1: Extracting facts from ${#FILES[@]} files (in date order)..."
     for f in $(printf '%s\n' "${FILES[@]}" | sort); do
-        run_extraction_for_file "$f"
+        run_extraction_for_file "$f" || { echo "  Extraction stopped (RAM/error)."; break; }
         run_agent_learnings_for_file "$f"
     done
 
@@ -113,7 +138,7 @@ elif [ "${1:-}" = "--backfill-all-openclaw-agents" ]; then
     echo "Step 1: Extracting facts from ${#FOUND_FILES[@]} files (in date order)..."
     # Sort ensures chronological order
     for f in $(printf '%s\n' "${FOUND_FILES[@]}" | sort); do
-        run_extraction_for_file "$f"
+        run_extraction_for_file "$f" || { echo "  Extraction stopped (RAM/error)."; break; }
         run_agent_learnings_for_file "$f"
     done
 
