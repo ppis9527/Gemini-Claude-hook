@@ -45,21 +45,37 @@ function markProcessed(sessionId, mtime) {
     fs.appendFileSync(PROCESSED_FILE, `${sessionId}|${mtime}\n`);
 }
 
+// Marker string found in fake sessions created by gemini -p extraction calls
+const FAKE_SESSION_MARKER = 'Extract persistent factual information';
+
 function findGeminiSessions() {
     const sessions = [];
     if (!fs.existsSync(GEMINI_BASE)) return sessions;
+    let fakeDeleted = 0;
 
     for (const entry of fs.readdirSync(GEMINI_BASE)) {
         const chatsDir = path.join(GEMINI_BASE, entry, 'chats');
         if (!fs.existsSync(chatsDir) || !fs.statSync(chatsDir).isDirectory()) continue;
 
         for (const file of fs.readdirSync(chatsDir)) {
-            if (file.startsWith('session-') && file.endsWith('.json')) {
-                sessions.push(path.join(chatsDir, file));
-            }
+            if (!file.startsWith('session-') || !file.endsWith('.json')) continue;
+            const filePath = path.join(chatsDir, file);
+
+            // Pre-filter: delete fake sessions (created by gemini -p) before converting
+            try {
+                const content = fs.readFileSync(filePath, 'utf8');
+                if (content.includes(FAKE_SESSION_MARKER)) {
+                    fs.unlinkSync(filePath);
+                    fakeDeleted++;
+                    continue;
+                }
+            } catch { continue; }
+
+            sessions.push(filePath);
         }
     }
 
+    if (fakeDeleted > 0) console.log(`Pre-filter: deleted ${fakeDeleted} fake session(s) from gemini -p`);
     return sessions.sort();
 }
 
