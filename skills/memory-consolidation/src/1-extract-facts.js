@@ -7,8 +7,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { spawnSync } = require('child_process');
 const { filterConversation, getNoiseStats } = require('./noise-filter.js');
+
+const MIN_FREE_MB = 300; // Abort if free RAM drops below this
 
 const FACTS_FILE = process.env.FACTS_FILE || path.join(__dirname, 'facts.jsonl');
 const PROCESSED_FILE = path.join(__dirname, '..', '.processed_sessions');
@@ -97,13 +100,25 @@ function chunkText(text) {
     return chunks;
 }
 
+function checkRam() {
+    const freeMB = Math.round(os.freemem() / 1024 / 1024);
+    if (freeMB < MIN_FREE_MB) {
+        console.error(`  ⚠ Low RAM: ${freeMB}MB free (min ${MIN_FREE_MB}MB). Aborting extraction.`);
+        return false;
+    }
+    return true;
+}
+
 function callGemini(text) {
+    if (!checkRam()) return [];
+
     const result = spawnSync('gemini', ['-p', PROMPT, '-m', 'gemini-2.5-flash-lite'], {
         input: text,
         encoding: 'utf8',
         env: { ...process.env, GEMINI_SKIP_HOOKS: '1' },
         timeout: 45_000,  // 45s - must be less than hook timeout (60s)
         maxBuffer: 10 * 1024 * 1024,
+        killSignal: 'SIGKILL',  // Force kill on timeout to prevent zombie python3
     });
 
     if (result.status !== 0) {
