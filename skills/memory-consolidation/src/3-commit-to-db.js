@@ -140,6 +140,8 @@ async function main() {
     }
 
     const db = new Database(DB_PATH);
+    db.pragma('journal_mode = WAL');
+    db.pragma('busy_timeout = 10000');
     ensureTable(db);
 
     // commitFacts is async (due to dedupDecision), so we can't use db.transaction() directly

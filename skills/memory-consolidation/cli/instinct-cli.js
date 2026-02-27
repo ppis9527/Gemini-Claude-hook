@@ -22,7 +22,10 @@ function getDb(readonly = true) {
         console.error('Database not found:', dbPath);
         process.exit(1);
     }
-    return new Database(dbPath, { readonly });
+    const db = new Database(dbPath, { readonly });
+    db.pragma('busy_timeout = 10000');
+    if (!readonly) db.pragma('journal_mode = WAL');
+    return db;
 }
 
 function listInstincts(domain = null) {

@@ -406,6 +406,8 @@ function storeLearnings(learnings, dbPath) {
 
     const Database = require('better-sqlite3');
     const db = new Database(dbPath);
+    db.pragma('journal_mode = WAL');
+    db.pragma('busy_timeout = 10000');
 
     // Ensure table exists
     db.exec(`
