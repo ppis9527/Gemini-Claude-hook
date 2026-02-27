@@ -25,7 +25,10 @@ const DIGEST_PATH = path.join(__dirname, "..", "memory_digest.json");
 const CONFIG_PATH = path.join(__dirname, "..", "digest-config.json");
 
 function openDb(readonly = true) {
-  return new Database(DB_PATH, { readonly });
+  const db = new Database(DB_PATH, { readonly });
+  db.pragma('busy_timeout = 10000');
+  if (!readonly) db.pragma('journal_mode = WAL');
+  return db;
 }
 
 function loadConfig() {

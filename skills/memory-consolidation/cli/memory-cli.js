@@ -19,7 +19,10 @@ const DB_PATH = path.join(__dirname, '..', 'memory.db');
 const MAX_ROWS = 50;
 
 function openDb(readonly = true) {
-  return new Database(DB_PATH, { readonly });
+  const db = new Database(DB_PATH, { readonly });
+  db.pragma('busy_timeout = 10000');
+  if (!readonly) db.pragma('journal_mode = WAL');
+  return db;
 }
 
 async function cmdStore(key, value) {

@@ -251,6 +251,7 @@ function loadExistingInstincts() {
     if (!fs.existsSync(dbPath)) return new Set();
 
     const db = new Database(dbPath, { readonly: true });
+    db.pragma('busy_timeout = 5000');
     const rows = db.prepare(`
         SELECT key FROM memories WHERE key LIKE 'agent.instinct.%' AND end_time IS NULL
     `).all();
@@ -266,6 +267,8 @@ function storeInstincts(instincts) {
     if (instincts.length === 0) return;
 
     const db = new Database(dbPath);
+    db.pragma('journal_mode = WAL');
+    db.pragma('busy_timeout = 10000'); // Wait up to 10s if DB is locked
     const now = new Date().toISOString();
 
     // Close old versions of instincts being updated
