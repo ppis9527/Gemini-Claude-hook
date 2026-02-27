@@ -30,7 +30,7 @@ function getGcloudToken() {
   try {
     const token = execSync("gcloud auth print-access-token 2>/dev/null", {
       encoding: "utf8",
-      timeout: 5000,
+      timeout: 15000,
     }).trim();
     if (token) {
       cachedGcloudToken = token;
@@ -55,21 +55,25 @@ function getGcloudProject() {
 }
 
 function getApiKey() {
+  // Priority: GOOGLE_API_KEY2 > GOOGLE_API_KEY > Secret Manager (KEY2) > Secret Manager (KEY)
+  if (process.env.GOOGLE_API_KEY2) return process.env.GOOGLE_API_KEY2;
   if (process.env.GOOGLE_API_KEY) return process.env.GOOGLE_API_KEY;
   if (cachedApiKey) return cachedApiKey;
 
   // Try GCP Secret Manager
-  try {
-    const key = execSync(
-      "gcloud secrets versions access latest --secret=OPENCLAW_API_GOOGLE 2>/dev/null",
-      { encoding: "utf8", timeout: 5000 }
-    ).trim();
-    if (key) {
-      cachedApiKey = key;
-      return key;
+  for (const secret of ['OPENCLAW_API_GOOGLE2', 'OPENCLAW_API_GOOGLE']) {
+    try {
+      const key = execSync(
+        `gcloud secrets versions access latest --secret=${secret} 2>/dev/null`,
+        { encoding: "utf8", timeout: 5000 }
+      ).trim();
+      if (key) {
+        cachedApiKey = key;
+        return key;
+      }
+    } catch {
+      // Try next
     }
-  } catch {
-    // Fall through
   }
   return null;
 }

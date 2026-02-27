@@ -8,6 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MEMORY_DIR="$(dirname "$SCRIPT_DIR")"
 LOG_FILE="$MEMORY_DIR/pipeline_gemini_cron.log"
 
+# Load API key for Gemma dedup + embedding
+export GOOGLE_API_KEY2="${GOOGLE_API_KEY2:-$(gcloud secrets versions access latest --secret=OPENCLAW_API_GOOGLE2 2>/dev/null || true)}"
+
 echo "[$(date -Iseconds)] Starting daily Gemini sync..." >> "$LOG_FILE"
 
 cd "$MEMORY_DIR"
