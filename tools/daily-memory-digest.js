@@ -11,6 +11,21 @@
 const { execSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+
+// Headless HOME for gemini -p: OAuth auth, no hooks, no MCP
+const HEADLESS_HOME = '/tmp/gemini-headless';
+const HEADLESS_GEMINI = path.join(HEADLESS_HOME, '.gemini');
+const REAL_GEMINI = path.join(os.homedir(), '.gemini');
+if (!fs.existsSync(HEADLESS_GEMINI)) {
+    fs.mkdirSync(HEADLESS_GEMINI, { recursive: true });
+}
+fs.writeFileSync(path.join(HEADLESS_GEMINI, 'settings.json'),
+    '{"security":{"auth":{"selectedType":"oauth-personal"}},"hooks":{},"mcpServers":{}}');
+for (const f of ['google_accounts.json', 'oauth_creds.json']) {
+    const src = path.join(REAL_GEMINI, f);
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(HEADLESS_GEMINI, f));
+}
 
 const MEMORY_CLI = '/home/jerryyrliu/.openclaw/workspace/skills/memory-consolidation/cli/memory-cli.js';
 const OUTPUT_DIR = '/home/jerryyrliu/.openclaw/workspace/reports/daily-digest';
@@ -73,9 +88,11 @@ ${facts}
 
     const result = spawnSync('gemini', ['-p', prompt, '-m', 'gemini-2.5-flash', '-y'], {
         encoding: 'utf8',
+        cwd: HEADLESS_HOME,
         timeout: 120000,
         maxBuffer: 10 * 1024 * 1024,
-        env: { ...process.env, GEMINI_SKIP_HOOKS: '1' }
+        killSignal: 'SIGKILL',
+        env: { ...process.env, HOME: HEADLESS_HOME }
     });
 
     if (result.status !== 0) {
