@@ -21,7 +21,7 @@
   },
   "weekly-topics": {
     "localDir": "topics",
-    "gdriveFolderId": "1YD9gcsjespruhqli5Sk-DdRYne9TDrNu"
+    "gdriveFolderId": "15AQdXxH1MxJHsGOWaowk-Flz8LiES22h"
   },
   "github-weekly": {
     "localDir": "reports/github_weekly",
@@ -30,5 +30,13 @@
   "skill-usage": {
     "localDir": "reports/usage",
     "gdriveFolderId": "1PAsTZMFRoc2c58pCyuf4i_dBlF6GAsBl"
+  },
+  "skill-usage-md": {
+    "localDir": "reports/usage",
+    "gdriveFolderId": "1YD9gcsjespruhqli5Sk-DdRYne9TDrNu"
+  },
+  "poly": {
+    "localDir": "reports/poly",
+    "gdriveFolderId": "19tTc_Zs8iqvMRvs75FRHUSGDFC_YIqTK"
   }
 }

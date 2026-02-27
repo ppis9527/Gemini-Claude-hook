@@ -11,7 +11,7 @@ SCRIPT_DIR=$(dirname "$0")
 cd "$SCRIPT_DIR/.."
 
 # Google Drive config
-GDRIVE_TOPICS_FOLDER="1YD9gcsjespruhqli5Sk-DdRYne9TDrNu"
+GDRIVE_TOPICS_FOLDER="15AQdXxH1MxJHsGOWaowk-Flz8LiES22h"
 GOG_ACCOUNT="jerryyrliu@gmail.com"
 TOPICS_DIR="$SCRIPT_DIR/../topics"
 

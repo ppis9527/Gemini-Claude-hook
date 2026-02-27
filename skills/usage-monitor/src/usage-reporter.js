@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { execSync } = require('child_process');
 
 const OPENCLAW_AGENTS_DIR = path.join(os.homedir(), '.openclaw/agents');
 const GEMINI_SESSIONS_DIR = path.join(os.homedir(), '.gemini/tmp');
@@ -241,6 +242,32 @@ function generateReport(opts) {
     return report;
 }
 
+// --- GDrive Upload ---
+
+const GDRIVE_FOLDER_MD = '1YD9gcsjespruhqli5Sk-DdRYne9TDrNu';
+const GOG_ACCOUNT = 'jerryyrliu@gmail.com';
+
+function uploadToGDrive(filePath, fileName) {
+    try {
+        const password = execSync('gcloud secrets versions access latest --secret=GOG_KEYRING_PASSWORD', {
+            encoding: 'utf8', timeout: 15000
+        }).trim();
+        if (!password) {
+            console.log('[usage-reporter] No GOG password, skipping upload');
+            return false;
+        }
+        execSync(
+            `GOG_KEYRING_PASSWORD="${password}" gog drive upload "${filePath}" --parent "${GDRIVE_FOLDER_MD}" --account "${GOG_ACCOUNT}" --name "${fileName}"`,
+            { encoding: 'utf8', timeout: 60000 }
+        );
+        console.log(`[usage-reporter] ✓ Uploaded ${fileName} to GDrive`);
+        return true;
+    } catch (e) {
+        console.error(`[usage-reporter] GDrive upload error: ${e.message}`);
+        return false;
+    }
+}
+
 // --- Main ---
 
 function main() {
@@ -267,6 +294,9 @@ function main() {
     console.log('\n--- Usage Report ---');
     console.log(report);
     console.log(`\n📄 Full report saved to: ${reportPath}`);
+
+    // Upload MD to GDrive
+    uploadToGDrive(reportPath, `USAGE_REPORT_${dateStr}.md`);
 }
 
 main();
