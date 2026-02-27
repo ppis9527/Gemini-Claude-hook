@@ -17,6 +17,21 @@ const FACTS_FILE = process.env.FACTS_FILE || path.join(__dirname, 'facts.jsonl')
 const PROCESSED_FILE = path.join(__dirname, '..', '.processed_sessions');
 const CHUNK_LIMIT = 30_000; // chars
 
+// Headless HOME for gemini -p: OAuth auth, no hooks, no MCP, no fake sessions
+const HEADLESS_HOME = '/tmp/gemini-headless';
+const HEADLESS_GEMINI = path.join(HEADLESS_HOME, '.gemini');
+const REAL_GEMINI = path.join(os.homedir(), '.gemini');
+if (!fs.existsSync(HEADLESS_GEMINI)) {
+    fs.mkdirSync(HEADLESS_GEMINI, { recursive: true });
+}
+// Always sync settings + OAuth creds from real HOME
+fs.writeFileSync(path.join(HEADLESS_GEMINI, 'settings.json'),
+    '{"security":{"auth":{"selectedType":"oauth-personal"}},"hooks":{},"mcpServers":{}}');
+for (const f of ['google_accounts.json', 'oauth_creds.json']) {
+    const src = path.join(REAL_GEMINI, f);
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(HEADLESS_GEMINI, f));
+}
+
 function getSessionId(filePath) {
     return path.basename(filePath, '.jsonl');
 }
@@ -115,7 +130,11 @@ function callGemini(text) {
     const result = spawnSync('gemini', ['-p', PROMPT, '-m', 'gemini-2.5-flash-lite'], {
         input: text,
         encoding: 'utf8',
-        env: { ...process.env, GEMINI_SKIP_HOOKS: '1' },
+        cwd: HEADLESS_HOME,  // Must match HOME for project-level settings
+        env: {
+            ...process.env,
+            HOME: HEADLESS_HOME,  // Clean env: OAuth auth, no hooks, no MCP, no fake sessions
+        },
         timeout: 45_000,  // 45s - must be less than hook timeout (60s)
         maxBuffer: 10 * 1024 * 1024,
         killSignal: 'SIGKILL',  // Force kill on timeout to prevent zombie python3

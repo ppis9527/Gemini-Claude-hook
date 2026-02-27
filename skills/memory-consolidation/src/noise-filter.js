@@ -48,21 +48,20 @@ const BOILERPLATE_PATTERNS = [
     /\[tool\]/i,
 ];
 
-// System/tool output patterns
+// System/tool output patterns — only match when ENTIRE content is system-like
 const SYSTEM_PATTERNS = [
     /^```[\s\S]*```$/,  // Pure code blocks
     /^\s*\{[\s\S]*\}\s*$/,  // Pure JSON
     /^(error|warning|info):/i,
-    /^\[[\w-]+\]/,  // Log prefixes like [INFO], [ERROR]
-    /^#+ /,  // Markdown headers only
-    /^[-*] /,  // List items only
+    /^\[[A-Z][A-Z_-]{1,15}\]/,  // Log prefixes like [INFO], [ERROR] (uppercase, max 15 chars)
+    /^#+ .{0,80}$/,  // Heading-only lines (no body after heading)
+    /^[-*] .{0,80}$/,  // Single short list item only
 ];
 
 // Very short content (likely not useful)
 const MIN_CONTENT_LENGTH = 10;
 
-// Very long content (likely tool output or code dump)
-const MAX_CONTENT_LENGTH = 5000;
+// MAX_CONTENT_LENGTH removed — precompression handles large content upstream
 
 /**
  * Check if text is noise
@@ -89,20 +88,20 @@ function isNoise(text, options = {}) {
 
     const trimmed = text.trim();
 
-    // Length checks
+    // Length check (min only — no max limit)
     if (opts.length) {
         if (trimmed.length < MIN_CONTENT_LENGTH) return true;
-        if (trimmed.length > MAX_CONTENT_LENGTH) return true;
     }
 
-    // Pattern checks
-    if (opts.denials) {
+    // Pattern checks — denial/meta only apply to short messages (< 500 chars)
+    // Long messages may contain these phrases incidentally
+    if (opts.denials && trimmed.length < 500) {
         for (const pattern of DENIAL_PATTERNS) {
             if (pattern.test(trimmed)) return true;
         }
     }
 
-    if (opts.meta) {
+    if (opts.meta && trimmed.length < 500) {
         for (const pattern of META_PATTERNS) {
             if (pattern.test(trimmed)) return true;
         }
@@ -148,8 +147,11 @@ function filterNoise(items, options = {}) {
 function filterConversation(conversationText, options = {}) {
     if (!conversationText) return '';
 
+    // Strip hook_context blocks before filtering (injected by SessionStart hooks)
+    let cleaned = conversationText.replace(/<hook_context>[\s\S]*?<\/hook_context>/g, '');
+
     // Split by message boundaries
-    const messages = conversationText.split(/\n\n(?=\[(user|assistant)\])/);
+    const messages = cleaned.split(/\n\n(?=\[(user|assistant)\])/);
 
     const filtered = messages.filter(msg => {
         // Extract content after role prefix
@@ -176,7 +178,6 @@ function getNoiseStats(texts) {
             boilerplate: 0,
             system: 0,
             tooShort: 0,
-            tooLong: 0,
         }
     };
 
@@ -186,11 +187,6 @@ function getNoiseStats(texts) {
         if (trimmed.length < MIN_CONTENT_LENGTH) {
             stats.noise++;
             stats.byCategory.tooShort++;
-            continue;
-        }
-        if (trimmed.length > MAX_CONTENT_LENGTH) {
-            stats.noise++;
-            stats.byCategory.tooLong++;
             continue;
         }
 
@@ -235,5 +231,4 @@ module.exports = {
     BOILERPLATE_PATTERNS,
     SYSTEM_PATTERNS,
     MIN_CONTENT_LENGTH,
-    MAX_CONTENT_LENGTH,
 };
