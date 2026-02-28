@@ -68,6 +68,22 @@ function parseSkillUsageTable(content) {
     return skills;
 }
 
+function parseModelTable(content) {
+    const models = {};
+    const sectionMatch = content.match(/## 🤖 Model Call Counts([\s\S]+?)(?=\n## [^#]|$)/);
+    if (!sectionMatch) return models;
+
+    for (const line of sectionMatch[1].split('\n')) {
+        const m = line.match(/-\s*\*\*(.+?)\*\*:\s*([\d,]+)\s*calls/);
+        if (m) {
+            const name = m[1];
+            const count = parseInt(m[2].replace(/,/g, ''), 10);
+            models[name] = (models[name] || 0) + count;
+        }
+    }
+    return models;
+}
+
 function parseReportMetadata(content) {
     const daysMatch = content.match(/Last (\d+) Days/);
     const genMatch = content.match(/Generated: (\d{4}-\d{2}-\d{2})/);
@@ -82,18 +98,37 @@ function parseReportMetadata(content) {
 }
 
 function generateHTML(data) {
-    const { totals, byDate, dates, sortedSkills } = data;
+    const { totals, byDate, dates, sortedSkills, modelTotals } = data;
 
     const totalSkills = sortedSkills.length;
-    const totalCalls = sortedSkills.reduce((s, [, d]) => s + d.total, 0);
+    const totalCalls = Object.values(modelTotals).reduce((a, b) => a + b, 0) || sortedSkills.reduce((s, [, d]) => s + d.total, 0);
     const totalOC = sortedSkills.reduce((s, [, d]) => s + d.openclaw, 0);
     const totalGC = sortedSkills.reduce((s, [, d]) => s + d.gemini, 0);
+    const modelData = Object.entries(modelTotals).sort((a, b) => b[1] - a[1]);
 
     const top10 = sortedSkills.slice(0, 10);
     const colors = [
         '#4e79a7', '#f28e2c', '#e15759', '#76b7b2', '#59a14f',
         '#edc949', '#af7aa1', '#ff9da7', '#9c755f', '#bab0ab'
     ];
+
+    const modelListHtml = modelData.map(([name, count], i) => {
+        const pct = totalCalls > 0 ? ((count / totalCalls) * 100).toFixed(1) : '0';
+        return `<div class="rank-item">
+            <span class="rank" style="background:${colors[i % colors.length]}">${i + 1}</span>
+            <span class="name">${name}</span>
+            <span class="count">${count.toLocaleString()} calls (${pct}%)</span>
+        </div>`;
+    }).join('');
+
+    const skillListHtml = top10.map(([name, d], i) => {
+        const pct = totalCalls > 0 ? ((d.total / totalCalls) * 100).toFixed(1) : '0';
+        return `<div class="rank-item">
+            <span class="rank" style="background:${colors[i % colors.length]}">${i + 1}</span>
+            <span class="name">${name}</span>
+            <span class="count">${d.total} calls (${pct}%) OC:${d.openclaw} GC:${d.gemini}</span>
+        </div>`;
+    }).join('');
 
     const rankingHtml = sortedSkills.map(([name, d], i) => {
         const rankClass = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
@@ -225,11 +260,31 @@ function generateHTML(data) {
 
         <div class="grid">
             <div class="card">
-                <h2>📊 Top 10 Skills (圓餅圖)</h2>
+                <h2>🤖 Model Distribution</h2>
+                <div class="chart-container">
+                    <canvas id="modelChart"></canvas>
+                </div>
+            </div>
+            <div class="card">
+                <h2>🤖 Model Breakdown</h2>
+                <div class="ranking">${modelListHtml}</div>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h2>📊 Top 10 Skills</h2>
                 <div class="chart-container">
                     <canvas id="pieChart"></canvas>
                 </div>
             </div>
+            <div class="card">
+                <h2>📊 Skill Breakdown (Top 10)</h2>
+                <div class="ranking">${skillListHtml}</div>
+            </div>
+        </div>
+
+        <div class="grid">
             <div class="card">
                 <h2>📈 OpenClaw vs Gemini CLI</h2>
                 <div class="chart-container">
@@ -249,8 +304,29 @@ function generateHTML(data) {
     <script>
         const colors = ${JSON.stringify(colors)};
         const top10 = ${JSON.stringify(top10)};
+        const modelData = ${JSON.stringify(modelData)};
 
-        // Pie Chart
+        // Model Distribution Chart
+        new Chart(document.getElementById('modelChart'), {
+            type: 'doughnut',
+            data: {
+                labels: modelData.map(([n]) => n),
+                datasets: [{
+                    data: modelData.map(([, c]) => c),
+                    backgroundColor: colors,
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'right', labels: { color: '#e0e0e0', font: { size: 11 } } }
+                }
+            }
+        });
+
+        // Skill Pie Chart
         new Chart(document.getElementById('pieChart'), {
             type: 'doughnut',
             data: {
@@ -330,12 +406,14 @@ function main() {
 
     // Aggregate data
     const totals = {};
+    const modelTotals = {};
     const byDate = {};
     const dates = [];
 
     for (const report of reports) {
         const content = fs.readFileSync(report.path, 'utf-8');
         const skills = parseSkillUsageTable(content);
+        const models = parseModelTable(content);
 
         if (Object.keys(skills).length === 0) continue;
 
@@ -348,6 +426,10 @@ function main() {
             totals[skill].openclaw += data.openclaw;
             totals[skill].gemini += data.gemini;
         }
+
+        for (const [model, count] of Object.entries(models)) {
+            modelTotals[model] = (modelTotals[model] || 0) + count;
+        }
     }
 
     const sortedSkills = Object.entries(totals).sort((a, b) => b[1].total - a[1].total);
@@ -358,7 +440,7 @@ function main() {
     }
 
     // Generate HTML
-    const html = generateHTML({ totals, byDate, dates, sortedSkills });
+    const html = generateHTML({ totals, byDate, dates, sortedSkills, modelTotals });
 
     // Save locally
     const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
