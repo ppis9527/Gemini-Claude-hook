@@ -59,17 +59,21 @@ def fetch_trending():
                 repo['name'] = name_match.group(2)
                 repo['url'] = f"https://github.com/{repo['author']}/{repo['name']}"
             
-            # 提取描述
-            desc_match = re.search(r'<p class="col-9 color-fg-muted my-1 pr-4">(.*?)</p>', article, re.DOTALL)
+            # 提取描述 (class 可能包含 pr-4 或 tmp-pr-4)
+            desc_match = re.search(r'<p class="col-9 color-fg-muted my-1[^"]*">(.*?)</p>', article, re.DOTALL)
             repo['description'] = desc_match.group(1).strip() if desc_match else "無描述"
-            
+
             # 提取語言
             lang_match = re.search(r'itemprop="programmingLanguage">(.*?)</span>', article)
             repo['language'] = lang_match.group(1) if lang_match else "Unknown"
-            
-            # 提取星數
-            stars_match = re.search(r'href="/[^/]+/[^/]+/stargazers">.*?([0-9,]+)', article, re.DOTALL)
+
+            # 提取總星數 (stargazers link 後穿過 SVG 找數字)
+            stars_match = re.search(r'/stargazers.*?>\s*([\d,]+)\s*<', article, re.DOTALL)
             repo['stars'] = stars_match.group(1).replace(',', '') if stars_match else "0"
+
+            # 提取今日星數
+            today_match = re.search(r'([\d,]+)\s*stars?\s*today', article)
+            repo['stars_today'] = today_match.group(1).replace(',', '') if today_match else None
             
             if 'name' in repo:
                 repos.append(repo)
@@ -92,18 +96,21 @@ def create_markdown(repos):
     hashtags = generate_hashtags(repos)
     content = f"# GitHub 今日熱門趨勢報告 ({DATE_STR})\n\n"
     content += f"> 自動產出日期: {DATE_STR}\n\n"
-    content += f"## 熱門專案摘要 (前 {len(repos[:15])} 名)\n\n"
-    
-    for repo in repos[:15]:
+    content += f"## 熱門專案摘要 (前 {len(repos[:10])} 名)\n\n"
+
+    for repo in repos[:10]:
         name = f"{repo.get('author')}/{repo.get('name')}"
         url = repo.get('url')
         desc = repo.get('description', '無描述')
         stars = repo.get('stars', 0)
         lang = repo.get('language', 'Unknown')
         
+        stars_today = repo.get('stars_today')
+        today_str = f" (+{stars_today} today)" if stars_today else ""
+
         content += f"### [{name}]({url})\n"
         content += f"- **描述**: {desc}\n"
-        content += f"- **語言**: {lang} | **星星數**: {stars}\n\n"
+        content += f"- **語言**: {lang} | ⭐ {stars}{today_str}\n\n"
         
     content += f"\n---\n{hashtags}\n"
     return content
@@ -161,9 +168,7 @@ def main():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(md_content)
     
-    print(f"1. 報告已儲存至: {file_path}")
-    
-    upload_with_gog(file_path)
+    print(f"報告已儲存至: {file_path}")
 
 if __name__ == "__main__":
     main()
