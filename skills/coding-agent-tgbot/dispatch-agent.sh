@@ -8,6 +8,9 @@
 
 set -euo pipefail
 
+# Load all secrets at the beginning to ensure they are available for gcloud and other tools
+source /home/jerryyrliu/.openclaw/workspace/tools/load-secrets.sh
+
 # ============== Agent Configuration ==============
 declare -A AGENT_BINS=(
     ["claude"]="/home/jerryyrliu/.nvm/versions/node/v24.13.0/bin/claude"
@@ -91,16 +94,18 @@ if [ ! -x "$AGENT_BIN" ]; then
     exit 1
 fi
 
+# ============== Internal State ==============
+SUCCESS_NOTIFIED=false
+
 # ============== Helper: Send Telegram Message ==============
 send_telegram() {
     local message="$1"
 
-    # Get token from gcloud secrets
-    local TOKEN
-    TOKEN=$(gcloud secrets versions access latest --secret=TELEGRAM_TOKEN_MAIN 2>/dev/null || echo "")
+    # Get token from environment (should be loaded by load-secrets.sh)
+    local TOKEN="${TELEGRAM_TOKEN_MAIN:-}"
 
     if [ -z "$TOKEN" ]; then
-        echo "[dispatch] Warning: No Telegram token available" >&2
+        echo "[dispatch] Warning: No Telegram token available in TELEGRAM_TOKEN_MAIN env var" >&2
         return 1
     fi
 
@@ -247,6 +252,7 @@ EOF
 
 # Task output file
 TASK_OUTPUT="${RESULTS_DIR}/task-output.txt"
+TASK_STDERR="${RESULTS_DIR}/task-stderr.txt"
 
 # ============== 4. Prepare Prompt with Report Format ==============
 # Get Taiwan date for prompt
@@ -276,8 +282,8 @@ printf '%s' "$FULL_PROMPT" > "$PROMPT_FILE"
 
 # ============== 5. Execute Agent ==============
 # IMPORTANT: Unset env vars to allow nested launch
-unset CLAUDECODE
-unset GEMINI_CLI
+# unset CLAUDECODE
+# unset GEMINI_CLI
 
 cd "${TEMP_WORKDIR}"
 
@@ -295,22 +301,38 @@ cleanup() {
     # Update status to interrupted
     sed -i 's/"status": "running"/"status": "interrupted"/' "$TASK_META" 2>/dev/null || true
 
-    # Send TG notification about interruption
-    send_telegram "⚠️ *${AGENT_NAME} 任務中斷*
+    # Send TG notification about interruption if not already notified
+    if [ "$SUCCESS_NOTIFIED" = "false" ]; then
+        send_telegram "⚠️ *${AGENT_NAME} 任務中斷*
 
 📋 任務: \`${TASK_NAME}\`
-📝 原因: 進程被終止"
+📝 原因: 進程被終止或接收到中斷訊號"
+        SUCCESS_NOTIFIED=true
+    fi
 
-    rm -f "$PROMPT_FILE"
     exit $exit_code
 }
 
+# Global exit handler for crashes/unexpected exits
+exit_handler() {
+    local exit_code=$?
+    if [ "$exit_code" -ne 0 ] && [ "$SUCCESS_NOTIFIED" = "false" ]; then
+        send_telegram "❌ *${AGENT_NAME} 系統錯誤*
+
+📋 任務: \`${TASK_NAME}\`
+⚠️ 腳本異常退出 (Exit code: $exit_code)。請檢查日誌 \`~/.openclaw/workspace/logs/${AGENT}-bot-error.log\`"
+        store_memory "task.${TASK_NAME}.status" "crashed"
+    fi
+    rm -f "$PROMPT_FILE" 2>/dev/null || true
+}
+
 trap cleanup SIGTERM SIGINT SIGHUP
+trap exit_handler EXIT
 
 # Agent-specific execution - output directly to file (survives parent termination)
 case "$AGENT" in
     claude)
-        "${AGENT_BIN}" -p - --permission-mode bypassPermissions < "$PROMPT_FILE" > "$TASK_OUTPUT" 2>&1 &
+        "${AGENT_BIN}" -p - --permission-mode bypassPermissions < "$PROMPT_FILE" > "$TASK_OUTPUT" 2>"$TASK_STDERR" &
         AGENT_PID=$!
         ;;
     gemini)
@@ -323,7 +345,7 @@ case "$AGENT" in
             --include-directories "$HOME/.gemini" \
             --include-directories "$HOME/Telegram-Gemini-Bot" \
             --include-directories "/tmp" \
-            < "$PROMPT_FILE" > "$TASK_OUTPUT" 2>&1 &
+            < "$PROMPT_FILE" > "$TASK_OUTPUT" 2>"$TASK_STDERR" &
         AGENT_PID=$!
         ;;
     *)
@@ -334,8 +356,8 @@ esac
 
 echo "[dispatch] Agent PID: $AGENT_PID, output: $TASK_OUTPUT"
 
-# Wait for agent to complete
-wait "$AGENT_PID"
+# Wait for agent to complete (|| true to prevent set -e from killing post-processing)
+wait "$AGENT_PID" || true
 AGENT_EXIT_CODE=$?
 
 # Clear trap after successful completion
@@ -363,7 +385,7 @@ if [ -z "$DECISION_REPORT" ]; then
 fi
 
 # Extract hashtags from agent output (lines starting with #openclaw)
-AGENT_HASHTAGS=$(echo "$AGENT_FULL_OUTPUT" | grep -E "^#openclaw" | tail -1)
+AGENT_HASHTAGS=$(echo "$AGENT_FULL_OUTPUT" | grep -E "^#openclaw" | tail -1 || true)
 if [ -z "$AGENT_HASHTAGS" ]; then
     # Fallback to auto-generated hashtags
     AGENT_HASHTAGS=$(generate_hashtags)
@@ -444,7 +466,7 @@ END_MSG="${STATUS_EMOJI} *${AGENT_NAME} 任務${STATUS_TEXT}*
 📋 任務: \`${TASK_NAME}\`
 📝 摘要: ${SUMMARY}"
 
-send_telegram "$END_MSG"
+send_telegram "$END_MSG" && SUCCESS_NOTIFIED=true
 
 # Update task-meta status
 sed -i 's/"status": "running"/"status": "done"/' "$TASK_META" 2>/dev/null || true

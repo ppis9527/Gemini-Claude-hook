@@ -160,7 +160,6 @@ function checkMemoryDB() {
 // Check cron jobs
 function checkCronJobs() {
     const jobs = [
-        { name: 'memory-sync', log: '~/.openclaw/workspace/skills/memory-consolidation/pipeline_cron.log' },
         { name: 'gemini-sync', log: '~/.openclaw/workspace/skills/memory-consolidation/pipeline_gemini_cron.log' },
         { name: 'daily-digest', log: '~/.openclaw/workspace/logs/daily-digest.log' }
     ];
