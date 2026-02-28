@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 """
-GitHub Trending Weekly Report Generator (Robust Scraper Edition)
-日期：2026-02-24
+GitHub Trending Daily Report Generator (Robust Scraper Edition)
 
 功能：
-1. 直接從 GitHub 官網抓取本週熱門專案 (不依賴第三方 API)。
+1. 直接從 GitHub 官網抓取今日熱門專案 (不依賴第三方 API)。
 2. 產出 Markdown 報告（包含日期與 #hashtags）。
 3. 透過 gogcli (gog) 上傳至 Google Drive 指定資料夾。
 4. 從 GCP Secret Manager 自動獲取 GOG_KEYRING_PASSWORD。
-
-#GitHubTrending #Automation #OpenClaw #WeeklyReport #gogcli #GCPSecretManager #2026-02-24
 """
 
 import os
@@ -22,7 +19,7 @@ from pathlib import Path
 # --- 設定區 ---
 FOLDER_ID = "1W6HmBBRL9u7HdBNOHnI_HebVwtatvMu_"
 ACCOUNT = "jerryyrliu@gmail.com"
-OUTPUT_DIR = Path("/home/jerryyrliu/.openclaw/workspace/tools")
+OUTPUT_DIR = Path("/home/jerryyrliu/.openclaw/workspace/reports/github_daily")
 DATE_STR = datetime.datetime.now().strftime("%Y-%m-%d")
 GOG_BINARY = "/usr/local/bin/gog"
 
@@ -38,7 +35,7 @@ def get_gog_password():
 
 def fetch_trending():
     """直接從 GitHub 官方抓取趨勢"""
-    url = "https://github.com/trending?since=weekly"
+    url = "https://github.com/trending?since=daily"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
@@ -84,7 +81,7 @@ def fetch_trending():
 
 def generate_hashtags(repos):
     """根據內容生成 hashtags"""
-    tags = set(["#GitHub", f"#{DATE_STR}", "#WeeklyReport", "#OpenClaw"])
+    tags = set(["#GitHub", f"#{DATE_STR}", "#DailyReport", "#OpenClaw"])
     languages = [repo.get("language") for repo in repos if repo.get("language") and repo.get("language") != "Unknown"]
     for lang in set(languages[:5]):
         tags.add(f"#{lang.replace(' ', '')}")
@@ -93,7 +90,7 @@ def generate_hashtags(repos):
 def create_markdown(repos):
     """產出 Markdown 內容"""
     hashtags = generate_hashtags(repos)
-    content = f"# GitHub 本週熱門趨勢報告 ({DATE_STR})\n\n"
+    content = f"# GitHub 今日熱門趨勢報告 ({DATE_STR})\n\n"
     content += f"> 自動產出日期: {DATE_STR}\n\n"
     content += f"## 熱門專案摘要 (前 {len(repos[:15])} 名)\n\n"
     
@@ -150,7 +147,7 @@ def upload_with_gog(file_path):
         print(f"執行 gog 發生錯誤: {e}")
 
 def main():
-    print(f"=== GitHub 每週趨勢報表生成器 ({DATE_STR}) ===")
+    print(f"=== GitHub 每日趨勢報表生成器 ({DATE_STR}) ===")
     repos = fetch_trending()
     if not repos:
         print("未抓取到任何資料，請檢查網頁格式或網路連結。")
@@ -158,7 +155,7 @@ def main():
 
     print(f"成功抓取到 {len(repos)} 個專案。")
     md_content = create_markdown(repos)
-    file_name = f"github_weekly_report_{DATE_STR}.md"
+    file_name = f"github_daily_report_{DATE_STR}.md"
     file_path = OUTPUT_DIR / file_name
     
     with open(file_path, "w", encoding="utf-8") as f:
