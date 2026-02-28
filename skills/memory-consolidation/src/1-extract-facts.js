@@ -124,49 +124,68 @@ function checkRam() {
     return true;
 }
 
-function callGemini(text) {
-    if (!checkRam()) return [];
-
+function callGeminiOnce(text) {
     const result = spawnSync('gemini', ['-p', PROMPT, '-m', 'gemini-2.5-flash-lite'], {
         input: text,
         encoding: 'utf8',
-        cwd: HEADLESS_HOME,  // Must match HOME for project-level settings
+        stdio: ['pipe', 'pipe', 'pipe'],  // Explicitly separate stdout/stderr
+        cwd: HEADLESS_HOME,
         env: {
             ...process.env,
-            HOME: HEADLESS_HOME,  // Clean env: OAuth auth, no hooks, no MCP, no fake sessions
+            HOME: HEADLESS_HOME,
         },
-        timeout: 45_000,  // 45s - must be less than hook timeout (60s)
+        timeout: 45_000,
         maxBuffer: 10 * 1024 * 1024,
-        killSignal: 'SIGKILL',  // Force kill on timeout to prevent zombie python3
+        killSignal: 'SIGKILL',
     });
 
+    // Log stderr separately (not mixed with stdout)
+    const stderr = (result.stderr || '').trim();
+    if (stderr) {
+        console.error('  Gemini stderr:', stderr.slice(0, 200));
+    }
+
     if (result.status !== 0) {
-        console.error('Gemini call failed (status ' + result.status + '):', result.stderr?.slice(0, 500));
-        console.log('STDOUT was:', result.stdout?.slice(0, 500));
-        return [];
+        return { ok: false, error: `status ${result.status}` };
     }
 
     let output = (result.stdout || '').trim();
-    // Debug output:
-    // console.log('DEBUG RAW OUTPUT:', output.slice(0, 100));
-    
-    // Improved JSON Extraction: Find the first '[' and last ']' to ignore preamble/footer
+
+    // Extract JSON array from potential preamble/footer
     const firstBracket = output.indexOf('[');
     const lastBracket = output.lastIndexOf(']');
-    
+
     if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
         output = output.slice(firstBracket, lastBracket + 1);
     }
 
     try {
         const parsed = JSON.parse(output);
-        if (!Array.isArray(parsed)) return [];
-        // Basic schema validation
-        return parsed.filter(f => f && typeof f.key === 'string' && f.value !== undefined);
+        if (!Array.isArray(parsed)) return { ok: false, error: 'not an array' };
+        return { ok: true, facts: parsed.filter(f => f && typeof f.key === 'string' && f.value !== undefined) };
     } catch (e) {
-        console.error('Failed to parse Gemini output:', e.message, 'Raw (truncated):', output.slice(0, 300));
-        return [];
+        return { ok: false, error: e.message, raw: output.slice(0, 300) };
     }
+}
+
+function callGemini(text, maxRetries = 1) {
+    if (!checkRam()) return [];
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        if (attempt > 0) {
+            console.log(`  Retry ${attempt}/${maxRetries}...`);
+            // Brief pause before retry
+            spawnSync('sleep', ['2']);
+        }
+
+        const result = callGeminiOnce(text);
+        if (result.ok) return result.facts;
+
+        console.error(`  Gemini attempt ${attempt + 1} failed:`, result.error);
+        if (result.raw) console.error('  Raw (truncated):', result.raw);
+    }
+
+    return [];
 }
 
 function extractSource(filePath) {
