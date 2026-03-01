@@ -17,8 +17,7 @@ const os = require('os');
 const { execSync } = require('child_process');
 
 const DEFAULT_REPORTS_DIR = path.join(os.homedir(), '.openclaw/workspace/reports/usage');
-const GDRIVE_FOLDER = '1PAsTZMFRoc2c58pCyuf4i_dBlF6GAsBl';
-const GOG_ACCOUNT = 'jerryyrliu@gmail.com';
+const GDRIVE_DIR = path.join(os.homedir(), 'gdrive', '01_Obsidian', '06_skill-usage');
 
 function parseArgs() {
     const args = process.argv.slice(2);
@@ -373,8 +372,8 @@ function generateHTML(data) {
 
 function uploadToGDrive(filePath, fileName) {
     try {
-        const password = execSync('gcloud secrets versions access latest --secret=GOG_KEYRING_PASSWORD', { encoding: 'utf8' }).trim();
-        execSync(`GOG_KEYRING_PASSWORD="${password}" gog drive upload "${filePath}" --parent "${GDRIVE_FOLDER}" --account "${GOG_ACCOUNT}" --name "${fileName}"`, { encoding: 'utf8', timeout: 60000 });
+        const dest = path.join(GDRIVE_DIR, fileName);
+        fs.copyFileSync(filePath, dest);
         return true;
     } catch (e) {
         return false;

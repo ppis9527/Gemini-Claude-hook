@@ -433,14 +433,12 @@ REPORT_EOF
 
 echo "[dispatch] Decision report saved: $REPORT_FILE"
 
-# Upload to Google Drive (Obsidian sync)
-GDRIVE_FOLDER_ID="1kGbGb-OX_7Spms6dbRoSfYxL5AdImahK"
-GOG_ACCOUNT="jerryyrliu@gmail.com"
-if command -v gog &>/dev/null; then
-    export GOG_KEYRING_PASSWORD=${GOG_KEYRING_PASSWORD:-$(gcloud secrets versions access latest --secret=GOG_KEYRING_PASSWORD 2>/dev/null || echo "")}
-    gog drive upload "$REPORT_FILE" --parent "$GDRIVE_FOLDER_ID" --account "$GOG_ACCOUNT" 2>/dev/null && \
-        echo "[dispatch] Uploaded to Google Drive: ${TASK_NAME}.md" || \
-        echo "[dispatch] Google Drive upload failed (non-critical)"
+# Copy to Google Drive (via rclone mount)
+GDRIVE_DECISIONS_DIR="$HOME/gdrive/01_Obsidian/03_decisions"
+if [ -d "$GDRIVE_DECISIONS_DIR" ]; then
+    cp "$REPORT_FILE" "$GDRIVE_DECISIONS_DIR/" && \
+        echo "[dispatch] Copied to ~/gdrive/: ${TASK_NAME}.md" || \
+        echo "[dispatch] GDrive copy failed (non-critical)"
 fi
 
 # ============== 8. Store Completion in Memory ==============

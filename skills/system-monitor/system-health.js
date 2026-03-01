@@ -19,8 +19,7 @@ const path = require('path');
 
 // Config
 const TG_GROUP = '-1003738302620';
-const GDRIVE_FOLDER = '103KLvYwFVcVCYYEeDyRsuT39nDj5ct8E';
-const GOG_ACCOUNT = 'jerryyrliu@gmail.com';
+const GDRIVE_DIR = path.join(process.env.HOME, 'gdrive', '01_Obsidian', '08_system-health');
 const REPORT_DIR = path.join(process.env.HOME, '.openclaw/workspace/reports/system-health');
 const MEMORY_DB = path.join(process.env.HOME, '.openclaw/workspace/skills/memory-consolidation/memory.db');
 const NOTIFY_ALWAYS = process.argv.includes('--notify-always');
@@ -273,19 +272,14 @@ function sendTG(message) {
     return result.status === 0;
 }
 
-// Upload to Google Drive
+// Copy to Google Drive (via rclone mount)
 function uploadGDrive(filePath, fileName) {
     try {
-        const password = exec('gcloud secrets versions access latest --secret=GOG_KEYRING_PASSWORD');
-        if (!password) return false;
-
-        const result = execSync(
-            `GOG_KEYRING_PASSWORD="${password}" gog drive upload "${filePath}" --parent "${GDRIVE_FOLDER}" --account "${GOG_ACCOUNT}" --name "${fileName}"`,
-            { encoding: 'utf8', timeout: 60000 }
-        );
+        const dest = path.join(GDRIVE_DIR, fileName);
+        fs.copyFileSync(filePath, dest);
         return true;
     } catch (e) {
-        console.error('[system-health] GDrive upload error:', e.message);
+        console.error('[system-health] GDrive copy error:', e.message);
         return false;
     }
 }

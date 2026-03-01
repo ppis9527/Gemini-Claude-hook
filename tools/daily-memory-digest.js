@@ -29,8 +29,7 @@ for (const f of ['google_accounts.json', 'oauth_creds.json']) {
 
 const MEMORY_CLI = '/home/jerryyrliu/.openclaw/workspace/skills/memory-consolidation/cli/memory-cli.js';
 const OUTPUT_DIR = '/home/jerryyrliu/.openclaw/workspace/reports/daily-digest';
-const GDRIVE_FOLDER_ID = '1TFO2BI7HcZorHxze3PtaX5pJIfYWkIOW';
-const GOG_ACCOUNT = 'jerryyrliu@gmail.com';
+const GDRIVE_DIR = path.join(process.env.HOME || '~', 'gdrive', '01_Obsidian', '02_daily-digest');
 
 // Get date (Taiwan timezone)
 function getTaiwanDate(offset = 0) {
@@ -161,23 +160,14 @@ ${content}
 `;
 }
 
-// Upload to Google Drive
+// Copy to Google Drive (via rclone mount)
 function uploadToGDrive(filePath) {
     try {
-        // Set GOG_KEYRING_PASSWORD
-        const password = execSync('gcloud secrets versions access latest --secret=GOG_KEYRING_PASSWORD', {
-            encoding: 'utf8'
-        }).trim();
-
-        const result = execSync(
-            `GOG_KEYRING_PASSWORD="${password}" gog drive upload "${filePath}" --parent "${GDRIVE_FOLDER_ID}" --account "${GOG_ACCOUNT}"`,
-            { encoding: 'utf8', timeout: 30000 }
-        );
-
-        const linkMatch = result.match(/link\s+(https:\/\/[^\s]+)/);
-        return linkMatch ? linkMatch[1] : 'uploaded';
+        const dest = path.join(GDRIVE_DIR, path.basename(filePath));
+        fs.copyFileSync(filePath, dest);
+        return 'copied';
     } catch (e) {
-        console.error('[daily-digest] Upload failed:', e.message);
+        console.error('[daily-digest] GDrive copy failed:', e.message);
         return null;
     }
 }

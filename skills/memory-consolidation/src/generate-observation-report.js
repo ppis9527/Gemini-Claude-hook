@@ -19,8 +19,7 @@ const MEMORY_ROOT = path.join(require('os').homedir(), '.openclaw/workspace/skil
 const OBSERVATIONS_FILE = path.join(MEMORY_ROOT, 'observations.jsonl');
 const DB_PATH = path.join(MEMORY_ROOT, 'memory.db');
 const REPORTS_DIR = path.join(MEMORY_ROOT, 'reports', 'observations');
-const GDRIVE_FOLDER_ID = '1rQoOFRBngYCElmLFxG4mjD5KyO53uBlU';
-const GOG_ACCOUNT = 'jerryyrliu@gmail.com';
+const GDRIVE_DIR = path.join(require('os').homedir(), 'gdrive', '01_Obsidian', '05_observation');
 
 const args = process.argv.slice(2);
 let targetDate = new Date().toISOString().slice(0, 10);
@@ -219,22 +218,14 @@ function main() {
     console.log(`  - Patterns: ${patterns.length}`);
     console.log(`  - Instincts: ${instincts.length}`);
 
-    // Upload to Google Drive
+    // Copy to Google Drive (via rclone mount)
     if (observations.length > 0) {
         try {
-            const gogPassword = execSync(
-                'gcloud secrets versions access latest --secret="GOG_KEYRING_PASSWORD"',
-                { encoding: 'utf8' }
-            ).trim();
-
-            const result = execSync(
-                `gog drive upload "${reportPath}" --parent ${GDRIVE_FOLDER_ID} --account ${GOG_ACCOUNT}`,
-                { encoding: 'utf8', env: { ...process.env, GOG_KEYRING_PASSWORD: gogPassword } }
-            );
-
-            console.log('[generate-observation-report] Uploaded to GDrive');
+            const dest = path.join(GDRIVE_DIR, path.basename(reportPath));
+            fs.copyFileSync(reportPath, dest);
+            console.log('[generate-observation-report] Copied to ~/gdrive/');
         } catch (e) {
-            console.error('[generate-observation-report] GDrive upload failed:', e.message);
+            console.error('[generate-observation-report] GDrive copy failed:', e.message);
         }
     }
 }

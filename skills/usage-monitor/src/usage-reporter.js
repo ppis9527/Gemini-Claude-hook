@@ -17,6 +17,7 @@ const NATIVE_TOOLS = new Set([
 
 let modelUsage = { openclaw: {}, gemini_cli: {} };
 let skillUsage = { openclaw: {}, gemini_cli: {} };
+let failureStats = { openclaw: {}, gemini_cli: {} };
 
 // Token usage tracking
 let tokenUsage = {
@@ -24,8 +25,38 @@ let tokenUsage = {
     gemini_cli: {}
 };
 
+const ERROR_KEYWORDS = [
+    'Permission denied',
+    'command not found',
+    'timed out',
+    'Sibling tool call errored',
+    'Error:',
+    'Failed'
+];
+
 function initTokenEntry() {
     return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, cost: 0, calls: 0 };
+}
+
+function initFailureEntry() {
+    return { total: 0, failures: 0, reasons: {} };
+}
+
+function detectFailure(content) {
+    if (!content || typeof content !== 'string') return null;
+    for (const kw of ERROR_KEYWORDS) {
+        if (content.includes(kw)) {
+            // Extract a concise reason
+            const index = content.indexOf(kw);
+            let reason = content.substring(index, index + 50).split('\n')[0].trim();
+            // Simplify reasons (e.g., specific file paths in permission denied)
+            if (reason.includes('Permission denied')) reason = 'Permission denied';
+            if (reason.includes('command not found')) reason = 'Command not found';
+            if (reason.includes('timed out')) reason = 'Timed out';
+            return reason;
+        }
+    }
+    return null;
 }
 
 // --- Data Parsers ---
@@ -37,8 +68,11 @@ function extractSkillFromCommand(cmd) {
     return null;
 }
 
-function parseOpenClawSession(filePath) {
+function parseOpenClawSession(filePath, agentName) {
     const lines = fs.readFileSync(filePath, 'utf8').split('\n').filter(Boolean);
+    if (!failureStats.openclaw[agentName]) failureStats.openclaw[agentName] = initFailureEntry();
+    const f = failureStats.openclaw[agentName];
+
     for (const line of lines) {
         try {
             const record = JSON.parse(line);
@@ -47,6 +81,7 @@ function parseOpenClawSession(filePath) {
 
                 if (model) {
                     modelUsage.openclaw[model] = (modelUsage.openclaw[model] || 0) + 1;
+                    f.total++;
 
                     // Extract token usage
                     const usage = record.message.usage;
@@ -62,6 +97,21 @@ function parseOpenClawSession(filePath) {
                         t.total += usage.totalTokens || (usage.input + usage.output) || 0;
                         t.cost += usage.cost?.total || 0;
                         t.calls += 1;
+                    }
+
+                    // Detect failures in AI response content
+                    if (record.message.role === 'assistant') {
+                        let content = '';
+                        if (Array.isArray(record.message.content)) {
+                            content = record.message.content.map(c => c.text || '').join(' ');
+                        } else {
+                            content = record.message.content || '';
+                        }
+                        const reason = detectFailure(content);
+                        if (reason) {
+                            f.failures++;
+                            f.reasons[reason] = (f.reasons[reason] || 0) + 1;
+                        }
                     }
                 }
 
@@ -81,15 +131,31 @@ function parseOpenClawSession(filePath) {
     }
 }
 
-function parseGeminiSession(filePath) {
+function parseGeminiSession(filePath, agentName) {
     try {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
         if (!data.messages) return;
 
+        if (!failureStats.gemini_cli[agentName]) failureStats.gemini_cli[agentName] = initFailureEntry();
+        const f = failureStats.gemini_cli[agentName];
+
         for (const msg of data.messages) {
-            if (msg.model) {
-                const model = msg.model.split('/').pop();
-                modelUsage.gemini_cli[model] = (modelUsage.gemini_cli[model] || 0) + 1;
+            if (msg.type === 'gemini' || msg.type === 'assistant' || msg.role === 'assistant') {
+                f.total++;
+                if (msg.model) {
+                    const model = msg.model.split('/').pop();
+                    modelUsage.gemini_cli[model] = (modelUsage.gemini_cli[model] || 0) + 1;
+                } else if (data.model) {
+                    const model = data.model.split('/').pop();
+                    modelUsage.gemini_cli[model] = (modelUsage.gemini_cli[model] || 0) + 1;
+                }
+
+                // Detect failures
+                const reason = detectFailure(msg.content) || (msg.type === 'error' ? msg.message : null);
+                if (reason) {
+                    f.failures++;
+                    f.reasons[reason] = (f.reasons[reason] || 0) + 1;
+                }
             }
             if (msg.toolCalls) {
                 for (const call of msg.toolCalls) {
@@ -117,7 +183,7 @@ function scanOpenClawSessions(sinceTime) {
                 const filePath = path.join(sessionsPath, file);
                 const stats = fs.statSync(filePath);
                 if (stats.mtimeMs >= sinceTime) {
-                    parseOpenClawSession(filePath);
+                    parseOpenClawSession(filePath, agentDir);
                 }
             }
         }
@@ -128,6 +194,9 @@ function scanGeminiSessions(sinceTime) {
     if (!fs.existsSync(GEMINI_SESSIONS_DIR)) return;
     const projects = fs.readdirSync(GEMINI_SESSIONS_DIR);
     for (const p of projects) {
+        // Group all tmp-xxxx directories as "gemini-ephemeral"
+        const agentName = p.startsWith('tmp-') ? 'gemini-ephemeral' : p;
+        
         const chatDir = path.join(GEMINI_SESSIONS_DIR, p, 'chats');
         if (fs.existsSync(chatDir)) {
             const files = fs.readdirSync(chatDir);
@@ -135,7 +204,7 @@ function scanGeminiSessions(sinceTime) {
                 const filePath = path.join(chatDir, file);
                 const stats = fs.statSync(filePath);
                 if (stats.mtimeMs >= sinceTime) {
-                    parseGeminiSession(filePath);
+                    parseGeminiSession(filePath, agentName);
                 }
             }
         }
@@ -239,31 +308,52 @@ function generateReport(opts) {
         report += 'No internal skill usage data found.';
     }
 
+    // 🚨 Failure Analysis
+    report += '\n\n## 🚨 Failure Analysis\n\n';
+    report += '| Agent | Total Calls | Failures | Rate | Primary Reasons |\n';
+    report += '| :--- | ---: | ---: | ---: | :--- |\n';
+
+    const allAgents = new Set([...Object.keys(failureStats.openclaw), ...Object.keys(failureStats.gemini_cli)]);
+    for (const agent of allAgents) {
+        if (agent === 'bin' || agent === 'tmp') continue;
+        const oc = failureStats.openclaw[agent] || initFailureEntry();
+        const gc = failureStats.gemini_cli[agent] || initFailureEntry();
+        const total = oc.total + gc.total;
+        const fails = oc.failures + gc.failures;
+        if (total === 0) continue;
+        const rate = total > 0 ? ((fails / total) * 100).toFixed(1) + '%' : '0%';
+
+        // Combine reasons
+        const reasons = {};
+        [oc.reasons, gc.reasons].forEach(rMap => {
+            for (const [r, c] of Object.entries(rMap)) {
+                reasons[r] = (reasons[r] || 0) + c;
+            }
+        });
+        const topReasons = Object.entries(reasons)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([r, c]) => `${r}(${c})`)
+            .join(', ');
+
+        report += `| **${agent}** | ${total} | ${fails} | ${rate} | ${topReasons || 'None'} |\n`;
+    }
+
     return report;
 }
 
-// --- GDrive Upload ---
+// --- GDrive Upload (via rclone mount) ---
 
-const GDRIVE_FOLDER_MD = '1YD9gcsjespruhqli5Sk-DdRYne9TDrNu';
-const GOG_ACCOUNT = 'jerryyrliu@gmail.com';
+const GDRIVE_DIR = path.join(process.env.HOME || '~', 'gdrive', '02_analysis report', 'usage-monitor');
 
 function uploadToGDrive(filePath, fileName) {
     try {
-        const password = execSync('gcloud secrets versions access latest --secret=GOG_KEYRING_PASSWORD', {
-            encoding: 'utf8', timeout: 15000
-        }).trim();
-        if (!password) {
-            console.log('[usage-reporter] No GOG password, skipping upload');
-            return false;
-        }
-        execSync(
-            `GOG_KEYRING_PASSWORD="${password}" gog drive upload "${filePath}" --parent "${GDRIVE_FOLDER_MD}" --account "${GOG_ACCOUNT}" --name "${fileName}"`,
-            { encoding: 'utf8', timeout: 60000 }
-        );
-        console.log(`[usage-reporter] ✓ Uploaded ${fileName} to GDrive`);
+        const dest = path.join(GDRIVE_DIR, fileName);
+        fs.copyFileSync(filePath, dest);
+        console.log(`[usage-reporter] ✓ Copied ${fileName} to ~/gdrive/`);
         return true;
     } catch (e) {
-        console.error(`[usage-reporter] GDrive upload error: ${e.message}`);
+        console.error(`[usage-reporter] GDrive copy error: ${e.message}`);
         return false;
     }
 }

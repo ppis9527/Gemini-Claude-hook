@@ -10,9 +10,8 @@ set -euo pipefail
 SCRIPT_DIR=$(dirname "$0")
 cd "$SCRIPT_DIR/.."
 
-# Google Drive config
-GDRIVE_TOPICS_FOLDER="15AQdXxH1MxJHsGOWaowk-Flz8LiES22h"
-GOG_ACCOUNT="jerryyrliu@gmail.com"
+# Google Drive config (via rclone mount)
+GDRIVE_TOPICS_DIR="$HOME/gdrive/01_Obsidian/09_weekly-topics"
 TOPICS_DIR="$SCRIPT_DIR/../topics"
 
 echo "--- Weekly consolidation at $(date) ---"
@@ -33,28 +32,17 @@ fi
 echo "Step 8: Rolling topics..."
 node src/8-update-rolling-topics.js
 
-# Step 9: Upload topics to Google Drive
-echo "Step 9: Uploading topics to Google Drive..."
-if [ -d "$TOPICS_DIR" ]; then
-    # Get GOG password
-    GOG_PASSWORD=$(gcloud secrets versions access latest --secret=GOG_KEYRING_PASSWORD 2>/dev/null || echo "")
-
-    if [ -n "$GOG_PASSWORD" ]; then
-        # Upload each .md file in topics/
-        for file in "$TOPICS_DIR"/*.md; do
-            [ -f "$file" ] || continue
-            filename=$(basename "$file")
-            echo "  Uploading: $filename"
-            GOG_KEYRING_PASSWORD="$GOG_PASSWORD" gog drive upload "$file" \
-                --parent "$GDRIVE_TOPICS_FOLDER" \
-                --account "$GOG_ACCOUNT" \
-                --name "$filename" 2>/dev/null && echo "    ✓ uploaded" || echo "    ✗ failed"
-        done
-    else
-        echo "  Warning: No GOG password, skipping upload"
-    fi
+# Step 9: Copy topics to Google Drive (via rclone mount)
+echo "Step 9: Syncing topics to Google Drive..."
+if [ -d "$TOPICS_DIR" ] && [ -d "$GDRIVE_TOPICS_DIR" ]; then
+    for file in "$TOPICS_DIR"/*.md; do
+        [ -f "$file" ] || continue
+        filename=$(basename "$file")
+        echo "  Copying: $filename"
+        cp "$file" "$GDRIVE_TOPICS_DIR/$filename" && echo "    ✓ copied" || echo "    ✗ failed"
+    done
 else
-    echo "  No topics directory yet"
+    echo "  Topics or GDrive mount not available"
 fi
 
 echo "--- Done at $(date) ---"

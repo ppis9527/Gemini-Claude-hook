@@ -15,8 +15,7 @@ const { execSync } = require('child_process');
 // Config
 const WORKSPACE = path.join(process.env.HOME, '.openclaw/workspace');
 const OUTPUT_FILE = path.join(WORKSPACE, 'WORKSPACE-CATALOG.md');
-const GDRIVE_FOLDER = '1jw4yYI0P83FWZiF4_xBS1iGymNivO9EG';
-const GOG_ACCOUNT = 'jerryyrliu@gmail.com';
+const GDRIVE_DIR = path.join(process.env.HOME, 'gdrive', '01_Obsidian');
 const UPLOAD = process.argv.includes('--upload');
 
 function getDate() {
@@ -398,21 +397,15 @@ Destinations for automated report uploads.
     return md;
 }
 
-// Upload to Google Drive
+// Copy to Google Drive (via rclone mount)
 function uploadToGDrive(filePath) {
     try {
-        const password = execSync('gcloud secrets versions access latest --secret=GOG_KEYRING_PASSWORD', {
-            encoding: 'utf8'
-        }).trim();
-
         const date = getDate();
-        execSync(
-            `GOG_KEYRING_PASSWORD="${password}" gog drive upload "${filePath}" --parent "${GDRIVE_FOLDER}" --account "${GOG_ACCOUNT}" --name "WORKSPACE-CATALOG-${date}.md"`,
-            { encoding: 'utf8', timeout: 60000 }
-        );
+        const dest = path.join(GDRIVE_DIR, `WORKSPACE-CATALOG-${date}.md`);
+        fs.copyFileSync(filePath, dest);
         return true;
     } catch (e) {
-        console.error('[generate-index] Upload failed:', e.message);
+        console.error('[generate-index] GDrive copy failed:', e.message);
         return false;
     }
 }
