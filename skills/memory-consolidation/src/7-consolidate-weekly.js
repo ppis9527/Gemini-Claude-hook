@@ -14,6 +14,7 @@
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
+const { mapCategory } = require('./category-map');
 
 const DB_PATH = process.env.MEMORY_DB_PATH || path.join(__dirname, '..', 'memory.db');
 const TOPICS_DIR = process.env.MEMORY_TOPICS_DIR || path.join(__dirname, '..', 'topics');
@@ -84,7 +85,7 @@ function groupByCategory(facts) {
     for (const fact of facts) {
         const normalizedKey = normalizeKey(fact.key);
         const parts = normalizedKey.split('.');
-        const category = parts[0] || 'misc';
+        const category = mapCategory(parts[0] || 'misc');
         if (!groups[category]) groups[category] = [];
         groups[category].push({ ...fact, key: normalizedKey });
     }
