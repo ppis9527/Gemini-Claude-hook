@@ -156,7 +156,7 @@ tags:
 ${content}
 
 ---
-#openclaw #daily-digest #${targetDate} ${hashtags}
+#openclaw #daily-digest #${targetDate} #VM ${hashtags}
 `;
 }
 

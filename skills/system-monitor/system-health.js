@@ -247,7 +247,7 @@ function generateReport(checks) {
 
     md += `
 ---
-#openclaw #system-health #${date} #monitoring
+#openclaw #system-health #${date} #monitoring #VM
 `;
 
     return { md, overall, date };

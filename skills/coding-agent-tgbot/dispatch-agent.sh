@@ -146,7 +146,7 @@ store_memory() {
 generate_hashtags() {
     # Date tag (Taiwan timezone)
     local date_tag="#$(TZ='Asia/Taipei' date +%Y-%m-%d)"
-    local tags="#openclaw #${AGENT} ${date_tag}"
+    local tags="#openclaw #${AGENT} ${date_tag} #VM"
 
     # Detect skill vs tool based on task name or prompt
     local lower_task=$(echo "$TASK_NAME" | tr '[:upper:]' '[:lower:]')

@@ -366,6 +366,9 @@ function generateHTML(data) {
             }
         });
     </script>
+    <footer style="text-align:center;color:#666;padding:20px;font-size:12px">
+        #openclaw #skill-usage #${dateStr} #VM
+    </footer>
 </body>
 </html>`;
 }

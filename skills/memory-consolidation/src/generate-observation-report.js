@@ -194,6 +194,8 @@ function generateReport(observations, analysis, patterns, instincts) {
         lines.push('No instincts learned yet.');
     }
     lines.push('');
+    lines.push('---');
+    lines.push(`#openclaw #observation #${targetDate} #VM`);
 
     return lines.join('\n');
 }

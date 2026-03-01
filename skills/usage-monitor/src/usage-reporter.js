@@ -339,6 +339,7 @@ function generateReport(opts) {
         report += `| **${agent}** | ${total} | ${fails} | ${rate} | ${topReasons || 'None'} |\n`;
     }
 
+    report += `\n---\n#openclaw #usage-report #${new Date().toISOString().slice(0, 10)} #VM\n`;
     return report;
 }
 

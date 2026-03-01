@@ -175,7 +175,7 @@ function generateRollingTopicMarkdown(category, facts, dateRange) {
 
     // Add hashtags
     lines.push('---');
-    lines.push(`#openclaw #rolling-topic #${category} #memory`);
+    lines.push(`#openclaw #rolling-topic #${category} #memory #VM`);
 
     return lines.join('\n');
 }
@@ -234,7 +234,7 @@ function generateIndexMarkdown(groups, dateRange) {
     // Add hashtags
     const categoryTags = Object.keys(groups).slice(0, 5).map(c => `#${c}`).join(' ');
     lines.push('---');
-    lines.push(`#openclaw #memory-index #topics ${categoryTags}`);
+    lines.push(`#openclaw #memory-index #topics #VM ${categoryTags}`);
 
     return lines.join('\n');
 }
