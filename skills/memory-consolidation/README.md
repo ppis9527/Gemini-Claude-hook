@@ -7,46 +7,47 @@ Built for [OpenClaw](https://openclaw.ai/), also works with Claude Code and Gemi
 ## Architecture
 
 ```
-                         ┌─────────────────────────────────────────┐
-                         │            Session Sources               │
-                         │  Claude Code  │  Gemini CLI  │  OpenClaw │
-                         │    JSONL      │    JSON      │   JSONL   │
-                         └───────┬───────────┬──────────────┬──────┘
-                                 │           │              │
-        ┌────────────────────────┼───────────┼──────────────┼────────────────────────┐
-        │                        │           │              │                        │
-        ▼                        ▼           ▼              ▼                        ▼
-┌───────────────────┐    ┌──────────────────────────────────────────┐    ┌───────────────────┐
-│ Observation System │    │              Noise Filter                 │    │   Tool Hooks      │
-│  (real-time)       │    │  (boilerplate, denials, meta-questions)  │    │ PreToolUse/Post   │
-│                    │    └───────────────────┬──────────────────────┘    │                   │
-│ observe.sh         │                        │                           │ observe.sh        │
-│      ↓             │    ┌───────────────────▼──────────────────────┐    │      ↓            │
-│ observations.jsonl │    │          Pipeline (8 steps)               │    │ observations.jsonl│
-│      ↓             │    │                                           │    └─────────┬─────────┘
-│ analyze-obs.js     │    │  1. Extract facts (Gemini LLM)            │              │
-│      ↓             │    │  2. Temporal alignment                    │              │
-│ extract-learnings  │    │  3. Commit + LLM dedup (skip/merge/new)   │              │
-│      ↓             │    │  4. Generate digest                       │              │
-│ agent.case.*       │    │  5. Embed (Gemini embedding)              │              │
-│ agent.pattern.*    │    │  6. Generate daily log                    │              │
-│      ↓             │    │  7. Weekly snapshot                       │              │
-│ (cron: 6h)         │    │  8. Rolling topic files                   │              │
-│ extract-instincts  │    └───────────────────┬───────────────────────┘              │
-│      ↓             │                        │                                      │
-│ agent.instinct.*   │    ┌───────────────────┼───────────────────┐                  │
-└─────────┬──────────┘    ▼                   ▼                   ▼                  │
-          │      ┌─────────────────┐  ┌────────────┐  ┌─────────────────┐            │
-          │      │   memory.db      │  │   logs/     │  │    topics/       │          │
-          └─────►│  SQLite + FTS5   │  │ YYYY-MM-DD  │  │ <category>.md    │◄─────────┘
-                 │  + embeddings    │  │    .md      │  │ YYYY-Www-*.md    │
-                 └──┬──────┬──────┬─┘  └────────────┘  └─────────────────┘
-                    │      │      │
-       ┌────────────▼┐  ┌──▼───┐  ┌▼────────────┐
-       │ Hybrid Search│  │ CLI  │  │ Hook inject │
-       │ (Vector+BM25)│  │      │  │(SessionStart│
-       │  MCP Server  │  │      │  │  summary)   │
-       └──────────────┘  └──────┘  └─────────────┘
+                    ┌──────────────────────────────────────────────┐
+                    │              Session Sources                  │
+                    │   Claude Code (JSONL)  │  Gemini CLI (JSON)  │
+                    │                        │  + TG Bots (貳俠/小序)│
+                    └──────────┬─────────────────────┬─────────────┘
+                               │                     │
+           ┌───────────────────┼─────────────────────┼───────────────────┐
+           │                   │                     │                   │
+           ▼                   ▼                     ▼                   ▼
+  ┌─────────────────┐  ┌──────────────────────────────────┐  ┌──────────────────┐
+  │  Tool Hooks     │  │          Noise Filter             │  │  Real-time Hooks │
+  │  (shared)       │  │  (boilerplate, denials, meta-Q)   │  │                  │
+  │                 │  └──────────────┬───────────────────┘  │ SessionEnd       │
+  │ Claude Code:    │                 │                       │ PreCompress      │
+  │  PreToolUse     │  ┌──────────────▼───────────────────┐  │ AfterModel (65%) │
+  │  PostToolUse    │  │       Pipeline (8 steps)          │  │       ↓          │
+  │ Gemini CLI:     │  │                                   │  │ gemini-session-  │
+  │  BeforeTool     │  │  1. Extract facts (Gemini LLM)    │  │ extract.js       │
+  │  AfterTool      │  │  2. Temporal alignment            │  │       ↓          │
+  │       ↓         │  │  3. Commit + LLM dedup            │  │ token-monitor.js │
+  │  observe.sh     │  │  4. Generate digest               │  └────────┬─────────┘
+  │       ↓         │  │  5. Embed (Gemini embedding)      │           │
+  │ observations    │  │  6. Generate daily log             │           │
+  │   .jsonl        │  │  7. Weekly snapshot                │           │
+  │       ↓         │  │  8. Rolling topic files            │           │
+  │ extract-        │  └──────────────┬────────────────────┘           │
+  │  learnings      │                 │                                │
+  │       ↓         │  ┌──────────────┼──────────────────┐             │
+  │ agent.case.*    │  ▼              ▼                  ▼             │
+  │ agent.pattern.* │  ┌────────────────┐ ┌──────────┐ ┌────────────┐ │
+  │       ↓         │  │  memory.db     │ │  logs/   │ │  topics/   │ │
+  │ extract-        │  │  SQLite + FTS5 │ │ YYYY-MM  │ │ <cat>.md   │ │
+  │  instincts      │  │  + embeddings  │ │  -DD.md  │ │ Www-*.md   │ │
+  │       ↓         │  └──┬─────┬─────┬┘ └──────────┘ └────────────┘ │
+  │ agent.instinct.*├────►│     │     │                               │
+  └─────────────────┘     │     │     │◄──────────────────────────────┘
+              ┌───────────▼┐ ┌──▼──┐ ┌▼────────────┐
+              │Hybrid Search│ │ CLI │ │ Hook inject │
+              │(Vector+BM25)│ │     │ │(SessionStart│
+              │ MCP Server  │ │     │ │  summary)   │
+              └─────────────┘ └─────┘ └─────────────┘
 ```
 
 ## Components
@@ -56,9 +57,10 @@ Built for [OpenClaw](https://openclaw.ai/), also works with Claude Code and Gemi
 | **Pipeline** | `run_pipeline.sh` | 8-step batch processing (steps 1-6) |
 | **Weekly Cron** | `src/weekly-consolidation.sh` | Weekly topic consolidation (steps 7-8) |
 | **MCP Server** | `mcp/server.mjs` | Model Context Protocol server for Claude Code & Gemini CLI |
-| **CLI** | `cli/memory-cli.js` | Command-line interface for OpenClaw agents (via `exec`) |
+| **CLI** | `cli/memory-cli.js` | Command-line interface (standalone, via `exec`) |
 | **Instinct CLI** | `cli/instinct-cli.js` | Manage learned behavioral rules (instincts) |
-| **Hook** | `src/query-memory.js` | SessionStart hook that injects memory summary + instincts |
+| **Observe Hook** | `src/observe.sh` | Shared tool observation hook (Claude PreToolUse/PostToolUse + Gemini BeforeTool/AfterTool) |
+| **SessionStart Hook** | `src/query-memory.js` | Injects memory summary + instincts at session start |
 | **Gemini Extract** | `src/gemini-session-extract.js` | SessionEnd/PreCompress hook for real-time Gemini fact extraction |
 | **Token Monitor** | `hooks/gemini/token-monitor.js` | AfterModel hook — proactive extraction at 65% context usage |
 
@@ -106,7 +108,7 @@ node cli/memory-cli.js store "error.config.x" "description of what happened"
 
 ### Core Pipeline (Steps 1-6)
 
-Runs every 6 hours via `periodic-memory-sync.sh` and `daily-gemini-sync.sh`.
+Runs every 12 hours via `daily-gemini-sync.sh`.
 
 | Step | Script | Description | Tokens |
 |---|---|---|---|
@@ -148,13 +150,10 @@ topics/
 ### Cron Schedule
 
 ```bash
-# Every 6 hours: steps 1-6 (OpenClaw sessions)
-0 */6 * * * /path/to/src/periodic-memory-sync.sh
+# Every 12 hours: steps 1-6 (Gemini CLI sessions)
+0 */12 * * * /path/to/src/daily-gemini-sync.sh
 
-# Every 6 hours: steps 1-6 (Gemini CLI sessions)
-0 */6 * * * /path/to/src/daily-gemini-sync.sh
-
-# Every 6 hours +30min: instinct extraction (after memory sync)
+# Every 6 hours: instinct extraction
 30 */6 * * * node /path/to/cli/instinct-cli.js extract --store
 
 # Sunday 4am: steps 7-8 (weekly consolidation)
