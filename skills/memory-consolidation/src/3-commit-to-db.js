@@ -78,7 +78,22 @@ async function commitFacts(db, facts) {
     for (const fact of facts) {
         const valStr = typeof fact.value === 'string' ? fact.value : JSON.stringify(fact.value);
 
-        // Run semantic dedup decision
+        // Fast path: if no active row with same key, skip expensive dedup
+        const existingRow = findActive.get(fact.key);
+        if (!existingRow) {
+            insert.run(fact.key, valStr, fact.source, fact.start_time, fact.end_time ?? null);
+            const newRow = getRowid.get(fact.key, fact.start_time);
+            if (newRow) ftsInsert.run(newRow.rowid, fact.key, valStr);
+            newCount++;
+            continue;
+        }
+        // Same key, same value → skip immediately
+        if (existingRow.value === valStr) {
+            skippedCount++;
+            continue;
+        }
+
+        // Run semantic dedup decision (only for same-key different-value)
         const decision = await dedupDecision(fact, db);
 
         if (decision.action === 'skip') {
