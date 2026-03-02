@@ -111,7 +111,7 @@ Runs every 6 hours via `periodic-memory-sync.sh` and `daily-gemini-sync.sh`.
 |---|---|---|---|
 | 1 | `src/1-extract-facts.js` | Extract facts from session JSONL via Gemini 2.5-flash-lite (with noise filter) | ~500 |
 | 2 | `src/2-align-temporally.js` | Temporal alignment, dedup same key+value | 0 |
-| 3 | `src/3-commit-to-db.js` | SQLite upsert with start_time/end_time lifecycle | 0 |
+| 3 | `src/3-commit-to-db.js` | SQLite upsert with fast-path dedup + LLM semantic dedup | ~0-50 |
 | 4 | `src/4-generate-digest.js` | Generate memory_digest.json | 0 |
 | 5 | `src/5-embed-facts.js` | Generate Gemini embedding-001 vectors (3072-dim) | ~100 |
 | 6 | `src/6-generate-daily-log.js` | Generate `logs/YYYY-MM-DD.md` from DB | 0 |
@@ -410,6 +410,14 @@ memory-consolidation/
 - `@modelcontextprotocol/sdk`, `zod` (installed via npm in `mcp/`)
 
 ## Changelog
+
+### v2.6.1 (2026-03-02)
+
+- **Step 3 performance fix**: Added fast-path dedup in `3-commit-to-db.js`
+  - New keys (no active row) insert directly — skip expensive embed + LLM dedup
+  - Same key + same value skip immediately
+  - Only same-key different-value triggers semantic dedup (embed + Gemma LLM)
+  - Result: 104 facts processed in ~0.1s (was 8+ minutes)
 
 ### v2.6.0 (2026-02-25)
 
