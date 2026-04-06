@@ -1,0 +1,12 @@
+[
+  {
+    "instruction": "MCP issues detected. Run /mcp list for status.When operating on files, always ensure they are read into memory before writing and re-read if they might have been modified; verify file existence before operations and validate arguments for all commands and tool calls to prevent errors.",
+    "cluster": "tool-error",
+    "confidence": "high"
+  },
+  {
+    "instruction": "MCP issues detected. Run /mcp list for status.When executing commands that may produce extensive output, such as `ripgrep`, limit the output using `head` and redirect standard error to `/dev/null` to prevent timeouts.",
+    "cluster": "timeout",
+    "confidence": "low"
+  }
+]

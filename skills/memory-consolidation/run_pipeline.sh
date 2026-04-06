@@ -175,7 +175,4 @@ node "$SRC_DIR/4-generate-digest.js"
 echo "Step 5: Embedding new facts..."
 node "$SRC_DIR/5-embed-facts.js"
 
-echo "Step 6: Generating daily log..."
-node "$SRC_DIR/6-generate-daily-log.js"
-
 echo "--- Finished at $(date) ---"
