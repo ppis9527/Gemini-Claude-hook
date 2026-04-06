@@ -5,7 +5,7 @@
 # Usage: status.sh <task-name>
 
 TASK_NAME="${1:-}"
-MEMORY_CLI="/home/jerryyrliu/.openclaw/workspace/skills/memory-consolidation/cli/memory-cli.js"
+MEMORY_CLI="$HOME/.openclaw/workspace/skills/memory-consolidation/cli/memory-cli.js"
 
 if [ -z "$TASK_NAME" ]; then
     echo "Usage: status.sh <task-name>"

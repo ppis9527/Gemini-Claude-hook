@@ -8,12 +8,12 @@
 set -euo pipefail
 
 # Fixed TG group for results
-TELEGRAM_GROUP="-1003779524696"
+TELEGRAM_GROUP="YOUR_CLAUDE_TG_GROUP_ID"
 
 # Paths
-DISPATCH_SCRIPT="/home/jerryyrliu/claude-code-hooks/scripts/dispatch-claude-code.sh"
-OPENCLAW_BIN="/home/jerryyrliu/.nvm/versions/node/v24.13.0/bin/openclaw"
-MEMORY_CLI="/home/jerryyrliu/.openclaw/workspace/skills/memory-consolidation/cli/memory-cli.js"
+DISPATCH_SCRIPT="$HOME/claude-code-hooks/scripts/dispatch-claude-code.sh"
+OPENCLAW_BIN="$HOME/.nvm/versions/node/$(node --version)/bin/openclaw"
+MEMORY_CLI="$HOME/.openclaw/workspace/skills/memory-consolidation/cli/memory-cli.js"
 
 # Parse arguments
 PROMPT=""
@@ -100,7 +100,7 @@ cd "$TEMP_WORKDIR" && git init >/dev/null # Initialize git repo
 cd - >/dev/null # Go back to original directory
 
 # Write task-meta.json for hooks (after TEMP_WORKDIR is created)
-TASK_META="/home/jerryyrliu/claude-code-hooks/data/claude-code-results/task-meta.json"
+TASK_META="$HOME/claude-code-hooks/data/claude-code-results/task-meta.json"
 mkdir -p "$(dirname "$TASK_META")"
 cat > "$TASK_META" <<EOF
 {
@@ -115,9 +115,9 @@ cat > "$TASK_META" <<EOF
 }
 EOF
 
-export CLAUDE_CODE_BIN="/home/jerryyrliu/.nvm/versions/node/v24.13.0/bin/claude"
+export CLAUDE_CODE_BIN="$HOME/.nvm/versions/node/$(node --version)/bin/claude"
 # IMPORTANT: hooks read from this fixed path
-TASK_OUTPUT="/home/jerryyrliu/claude-code-hooks/data/claude-code-results/task-output.txt"
+TASK_OUTPUT="$HOME/claude-code-hooks/data/claude-code-results/task-output.txt"
 
 # Write prompt to temp file to avoid shell escaping issues
 PROMPT_FILE=$(mktemp)

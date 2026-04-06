@@ -18,17 +18,17 @@ if [ "$DISPATCH_DEPTH" -ge 1 ]; then
 fi
 
 # Load all secrets at the beginning to ensure they are available for gcloud and other tools
-source /home/jerryyrliu/.openclaw/workspace/tools/load-secrets.sh
+source $HOME/.openclaw/workspace/tools/load-secrets.sh
 
 # ============== Agent Configuration ==============
 declare -A AGENT_BINS=(
-    ["claude"]="/home/jerryyrliu/.nvm/versions/node/v24.13.0/bin/claude"
-    ["gemini"]="/home/jerryyrliu/.nvm/versions/node/v24.13.0/bin/gemini"
+    ["claude"]="$HOME/.nvm/versions/node/$(node --version)/bin/claude"
+    ["gemini"]="$HOME/.nvm/versions/node/$(node --version)/bin/gemini"
 )
 
 declare -A AGENT_TELEGRAM_GROUPS=(
-    ["claude"]="-1003779524696"
-    ["gemini"]="-1003585105126"
+    ["claude"]="YOUR_CLAUDE_TG_GROUP_ID"
+    ["gemini"]="YOUR_GEMINI_TG_GROUP_ID"
 )
 
 declare -A AGENT_DISPLAY_NAMES=(
@@ -37,13 +37,13 @@ declare -A AGENT_DISPLAY_NAMES=(
 )
 
 declare -A AGENT_RESULTS_DIRS=(
-    ["claude"]="/home/jerryyrliu/claude-code-hooks/data/claude-code-results"
-    ["gemini"]="/home/jerryyrliu/gemini-cli-hooks/data/gemini-cli-results"
+    ["claude"]="$HOME/claude-code-hooks/data/claude-code-results"
+    ["gemini"]="$HOME/gemini-cli-hooks/data/gemini-cli-results"
 )
 
 # ============== Common Paths ==============
-OPENCLAW_BIN="/home/jerryyrliu/.nvm/versions/node/v24.13.0/bin/openclaw"
-MEMORY_CLI="/home/jerryyrliu/.openclaw/workspace/skills/memory-consolidation/cli/memory-cli.js"
+OPENCLAW_BIN="$HOME/.nvm/versions/node/$(node --version)/bin/openclaw"
+MEMORY_CLI="$HOME/.openclaw/workspace/skills/memory-consolidation/cli/memory-cli.js"
 
 # ============== A5: Parallel mode constants ==============
 MAX_PARALLEL=3
@@ -197,6 +197,99 @@ generate_hashtags() {
     done
 
     echo "$tags"
+}
+
+# ============== A6: Pre-Planning (智能化 Phase 1) ==============
+pre_plan() {
+    local prompt="$1"
+    local api_key="${GOOGLE_API_KEY:-}"
+
+    if [ -z "$api_key" ]; then
+        echo "[pre-plan] No GOOGLE_API_KEY, skipping pre-plan" >&2
+        echo ""  # empty = skip
+        return 0
+    fi
+
+    local system_prompt='你是一個任務分析器。分析以下開發任務，只輸出 JSON（不要 markdown code block）：
+{
+  "feasible": true/false,
+  "reason": "如果不可行，說明缺少什麼資訊",
+  "plan": {
+    "goal": "一句話目標",
+    "steps": ["步驟1", "步驟2", ...],
+    "files_likely": ["可能需要改的檔案路徑"],
+    "success_criteria": "怎樣算完成"
+  }
+}
+
+規則：
+- feasible=false 的情況：任務太模糊、缺少關鍵資訊（哪個檔案、什麼行為）、自相矛盾
+- steps 最多 5 步，每步要具體可執行
+- files_likely 填你能推測的路徑，不確定就留空陣列'
+
+    local request_body
+    request_body=$(jq -n \
+        --arg sys "$system_prompt" \
+        --arg user "$prompt" \
+        '{
+            "contents": [{"role": "user", "parts": [{"text": $user}]}],
+            "systemInstruction": {"parts": [{"text": $sys}]},
+            "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}
+        }')
+
+    local response
+    response=$(curl -s --max-time 10 \
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${api_key}" \
+        -H "Content-Type: application/json" \
+        -d "$request_body" 2>/dev/null) || {
+        echo "[pre-plan] API call failed, skipping" >&2
+        echo ""
+        return 0
+    }
+
+    # Extract text from response
+    local plan_json
+    plan_json=$(echo "$response" | jq -r '.candidates[0].content.parts[0].text // empty' 2>/dev/null) || {
+        echo "[pre-plan] JSON parse failed, skipping" >&2
+        echo ""
+        return 0
+    }
+
+    if [ -z "$plan_json" ]; then
+        echo "[pre-plan] Empty response, skipping" >&2
+        echo ""
+        return 0
+    fi
+
+    # Check feasibility
+    local feasible
+    feasible=$(echo "$plan_json" | jq -r 'if .feasible == false then "false" else "true" end' 2>/dev/null)
+
+    if [ "$feasible" = "false" ]; then
+        local reason
+        reason=$(echo "$plan_json" | jq -r '.reason // "任務描述不夠明確"' 2>/dev/null)
+        echo "REJECT:${reason}"
+        return 0
+    fi
+
+    # Build plan text to append
+    local goal steps files criteria
+    goal=$(echo "$plan_json" | jq -r '.plan.goal // ""' 2>/dev/null)
+    steps=$(echo "$plan_json" | jq -r '.plan.steps[]? // empty' 2>/dev/null | awk '{print NR". "$0}')
+    files=$(echo "$plan_json" | jq -r '.plan.files_likely[]? // empty' 2>/dev/null | paste -sd ', ' -)
+    criteria=$(echo "$plan_json" | jq -r '.plan.success_criteria // ""' 2>/dev/null)
+
+    local plan_text="
+---
+## Pre-Plan (由 AI 分析產生，僅供參考)
+目標：${goal}
+步驟：
+${steps}
+可能涉及檔案：${files:-未知}
+完成標準：${criteria}
+---"
+
+    echo "$plan_text"
 }
 
 # ============== A1: Generate result.json ==============
@@ -399,6 +492,33 @@ dispatch_single_task() {
 ---
 #openclaw #${tw_date} #${agent} [其他相關標籤，如 #skill #notion #api #debug 等]"
 
+    # ---- A6: Pre-Planning ----
+    local plan_result
+    plan_result=$(pre_plan "$prompt" 2>/dev/null) || true
+
+    if [[ "$plan_result" == REJECT:* ]]; then
+        local reject_reason="${plan_result#REJECT:}"
+        echo "[dispatch] Pre-plan rejected: $reject_reason"
+        local REJECT_MSG="⚠️ *任務被 Pre-Plan 退回*
+
+📋 任務: \`${task_name}\`
+❌ 原因: ${reject_reason}
+
+💡 請補充更多細節後重新派發"
+        send_telegram "$REJECT_MSG" "$telegram_group"
+        store_memory "task.${task_name}.status" "rejected"
+        store_memory "task.${task_name}.reason" "$reject_reason"
+        rm -rf "$temp_workdir"
+        return 0
+    elif [ -n "$plan_result" ]; then
+        echo "[dispatch] Pre-plan generated, appending to prompt"
+        full_prompt="${full_prompt}
+
+${plan_result}"
+    else
+        echo "[dispatch] Pre-plan skipped (no result)"
+    fi
+
     # Write prompt to temp file to avoid shell escaping issues
     local prompt_file
     prompt_file=$(mktemp)
@@ -521,7 +641,7 @@ dispatch_single_task() {
     echo "[dispatch] result.json saved: $result_json_path"
 
     # ---- Save Decision Report as Markdown ----
-    local reports_dir="/home/jerryyrliu/.openclaw/workspace/reports/decisions"
+    local reports_dir="$HOME/.openclaw/workspace/reports/decisions"
     mkdir -p "$reports_dir"
 
     local report_date report_time report_file
@@ -690,7 +810,7 @@ if [ "$PARALLEL_MODE" = "true" ]; then
     done
 
     # Generate parallel-summary.json by reading all result.json files
-    PARALLEL_SUMMARY_DIR="/home/jerryyrliu/claude-code-hooks/data/parallel-results"
+    PARALLEL_SUMMARY_DIR="$HOME/claude-code-hooks/data/parallel-results"
     mkdir -p "$PARALLEL_SUMMARY_DIR"
     PARALLEL_ID="parallel-$(date +%Y%m%d-%H%M%S)"
     PARALLEL_SUMMARY_FILE="${PARALLEL_SUMMARY_DIR}/${PARALLEL_ID}.json"
